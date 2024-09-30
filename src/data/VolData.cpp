@@ -1,47 +1,21 @@
 #include "VolData.h"
 
-#include <dcmtk/dcmdata/dcdatset.h>
-#include <dcmtk/dcmdata/dcdeftag.h>
-#include <dcmtk/dcmdata/dcmetinf.h>
-#include <dcmtk/ofstd/ofstring.h>
-#include <dcmtk/ofstd/oftypes.h>
+#include <dcmtk/dcmdata/dcpixel.h>
+#include <dcmtk/dcmimgle/dipixel.h>
+#include <dcmtk/dcmimgle/diutils.h>
 
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "core/error.h"
+#include "data/DcmParser.h"
+#include "dcmtk/dcmimgle/dcmimage.h"
+#include "utils/image.h"
 #include "utils/logger.h"
 namespace Voluma {
 
-// 将图像数据保存为PPM文件
-void saveImageAsPPM(const std::string& filename, const Uint16* pixelData,
-                    int width, int height) {
-    std::ofstream file(filename, std::ios::binary);
-
-    if (!file) {
-        std::cerr << "Failed to open file: " << filename << std::endl;
-        return;
-    }
-
-    // PPM header
-    file << "P6\n" << width << " " << height << "\n65535\n";
-
-    // 写入像素数据（16位）
-    for (int i = 0; i < width * height; ++i) {
-        Uint16 pixel = pixelData[i];
-        Uint16 r = pixel;  // R通道
-        Uint16 g = pixel;  // G通道
-        Uint16 b = pixel;  // B通道
-
-        file.write(reinterpret_cast<char*>(&r), sizeof(Uint16));
-        file.write(reinterpret_cast<char*>(&g), sizeof(Uint16));
-        file.write(reinterpret_cast<char*>(&b), sizeof(Uint16));
-    }
-
-    file.close();
-    std::cout << "Image saved as: " << filename << std::endl;
-}
 std::shared_ptr<VolData> VolData::loadFromDisk(const std::string& filename) {
     DcmFileFormat dfile;
 
@@ -51,6 +25,20 @@ std::shared_ptr<VolData> VolData::loadFromDisk(const std::string& filename) {
     return std::make_shared<VolData>(dfile);
 }
 
+void VolData::save(const std::filesystem::path& filename) const {
+    if (filename.extension() != ".exr") {
+        logFatal("VolData::save only support Exr format.");
+    }
+
+    Image image(getColWidth(), getRowWidth(), 1, ColorSpace::Linear);
+    for (int i = 0; i < image.getArea(); i++) {
+        float normalizedVal =
+            float(mVolumeSliceData[i]) / float(mMaxPixelValue - mMinPixelValue);
+        image.setPixel(i, 0, normalizedVal);
+    }
+    image.writeEXR(filename);
+}
+
 VolData::VolData(DcmFileFormat& dcmFile) {
     auto* pMeta = dcmFile.getMetaInfo();
     auto* pDataset = dcmFile.getDataset();
@@ -58,76 +46,25 @@ VolData::VolData(DcmFileFormat& dcmFile) {
     VL_ASSERT(pDataset != nullptr);
     VL_ASSERT(pMeta != nullptr);
 
+    DcmParser parser(pDataset);
+
     // Read and load metadata
-    loadPatientData(pDataset);
-    loadScanMeta(pDataset);
+    loadPatientData(parser);
+    loadScanMeta(parser);
 
     // Read slice images
-
-    const Uint16* pixelData = nullptr;
-    Uint16 rows = 0, cols = 0;
-    int frameNumber = 0;  // 选择第几层
-
-    pDataset->findAndGetUint16(DCM_Rows, rows);
-    pDataset->findAndGetUint16(DCM_Columns, cols);
-
-    unsigned long cnt;
-    pDataset->findAndGetUint16Array(DCM_PixelData, pixelData, &cnt);
-
-    logInfo("Count: {}, {}x{}", cnt, rows, cols);
-    if (pixelData == nullptr) {
-        std::cerr << "Failed to extract pixel data from DICOM file."
-                  << std::endl;
-    }
-
-    OFString pixelSpacing;
-    if (pDataset->findAndGetOFStringArray(DCM_PixelSpacing, pixelSpacing)
-            .good()) {
-        logInfo("Pixel spacing: {}", pixelSpacing.c_str());
-    }
-
-    Float64 sliceThickness;
-    if (pDataset->findAndGetFloat64(DCM_SliceThickness, sliceThickness)
-            .good()) {
-        logInfo("Slice thickness: {}", sliceThickness);
-    }
-
-    Float64 sliceLocation;
-    if (pDataset->findAndGetFloat64(DCM_SliceLocation, sliceLocation).good()) {
-        logInfo("Slice location: {}", sliceLocation);
-    }
-
-    const Uint16* selectedLayer = pixelData + frameNumber * rows * cols;
-
-    saveImageAsPPM("output.ppm", selectedLayer, cols, rows);
-}
-static std::optional<std::string> getDatasetString(DcmDataset* pDataset,
-                                                   const DcmTagKey& key) {
-    OFString value;
-    if (pDataset->findAndGetOFString(key, value).good()) {
-        return value.c_str();
-    }
-    return "";
+    loadImage(parser);
 }
 
-void VolData::loadPatientData(DcmDataset* pDataset) {
-    auto getDatasetString =
-        [pDataset](const DcmTagKey& key) -> std::optional<std::string> {
-        OFString value;
-        if (pDataset->findAndGetOFString(key, value).good()) {
-            return value.c_str();
-        }
-        return std::nullopt;
-    };
-
+void VolData::loadPatientData(const DcmParser& parser) {
     // Initialize patient data
     std::string id, name, birthDate;
 
-    id = getDatasetString(DCM_PatientID).value_or("");
-    name = getDatasetString(DCM_PatientName).value_or("");
-    birthDate = getDatasetString(DCM_PatientBirthDate).value_or("");
+    id = parser.getString(DCM_PatientID);
+    name = parser.getString(DCM_PatientName);
+    birthDate = parser.getString(DCM_PatientBirthDate);
 
-    std::string genderStr = getDatasetString(DCM_PatientSex).value_or("");
+    std::string genderStr = parser.getString(DCM_PatientSex);
     auto gender = (genderStr == "M")   ? Gender::Male
                   : (genderStr == "F") ? Gender::Female
                                        : Gender::Others;
@@ -138,6 +75,43 @@ void VolData::loadPatientData(DcmDataset* pDataset) {
     mPatientData.gender = gender;
 }
 
-void VolData::loadScanMeta(DcmDataset* pDataset) {}
+void VolData::loadScanMeta(const DcmParser& parser) {
+    uint32_t rows, cols;
+    float pixelSpaceV, pixelSpaceH;
+    float sliceThickness, sliceLocation;
+    float rescaleIntercept, rescaleSlope;
+
+    rows = parser.getU16(DCM_Rows);
+    cols = parser.getU16(DCM_Columns);
+
+    std::string pixelSpace = parser.getString(DCM_PixelSpacing);
+    auto segEnd = pixelSpace.find('\\');
+    pixelSpaceH = std::stof(pixelSpace.substr(0, segEnd));
+    pixelSpaceV = std::stof(pixelSpace.substr(segEnd + 1));
+
+    sliceThickness = (float)parser.getF64(DCM_SliceThickness);
+    sliceLocation = (float)parser.getF64(DCM_SliceLocation);
+
+    rescaleIntercept = (float)parser.getF64(DCM_RescaleIntercept);
+    rescaleSlope = (float)parser.getF64(DCM_RescaleSlope);
+
+    mMetaData.rowCount = rows;
+    mMetaData.colCount = cols;
+    mMetaData.pixelSpaceV = pixelSpaceV;
+    mMetaData.pixelSpaceH = pixelSpaceH;
+    mMetaData.sliceThickness = sliceThickness;
+    mMetaData.sliceLocation = sliceLocation;
+    mMetaData.rescaleIntercept = rescaleIntercept;
+    mMetaData.rescaleSlope = rescaleSlope;
+}
+
+void VolData::loadImage(const DcmParser& parser) {
+    mVolumeSliceData = parser.getU16Array(DCM_PixelData);
+
+    for (auto v : mVolumeSliceData) {
+        mMaxPixelValue = std::max(v, mMaxPixelValue);
+        mMinPixelValue = std::min(v, mMinPixelValue);
+    }
+}
 
 }  // namespace Voluma

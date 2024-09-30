@@ -1,13 +1,16 @@
-#include <dcmtk/dcmdata/dcdatset.h>
+
 #include <dcmtk/dcmdata/dcfilefo.h>
-#include <dcmtk/dcmdata/dcmetinf.h>
 #include <dcmtk/dcmdata/dctk.h>
 #include <fmt/core.h>
 
+#include <cstdint>
+#include <limits>
 #include <string>
 
 #include "Patient.h"
 #include "core/enum.h"
+#include "data/DcmParser.h"
+
 namespace Voluma {
 
 class VolData {
@@ -23,6 +26,10 @@ class VolData {
         float sliceThickness;  ///< 3D slice image thickness
         float
             sliceLocation;  ///< Depth location of the slice, could be negative
+
+        // Rescale
+        float rescaleIntercept;
+        float rescaleSlope;
     };
 
     VolData() = default;
@@ -34,14 +41,27 @@ class VolData {
     // Member getter
     const auto& getPatientData() { return mPatientData; }
 
-   private:
-    void loadPatientData(DcmDataset* pDataset);
+    auto getRowWidth() const { return mMetaData.rowCount; }
 
-    void loadScanMeta(DcmDataset* pDataset);
+    auto getColWidth() const { return mMetaData.colCount; }
+
+    void save(const std::filesystem::path& filename) const;
+
+   private:
+    void loadPatientData(const DcmParser& parser);
+
+    void loadScanMeta(const DcmParser& parser);
+
+    void loadImage(const DcmParser& parser);
 
     // File metadata
     PatientData mPatientData;  ///< Patient data
     ScanMeta mMetaData;        ///< Scanning metadata
+
+    // Volume data
+    std::vector<uint16_t> mVolumeSliceData;
+    uint16_t mMaxPixelValue = 0u;
+    uint16_t mMinPixelValue = std::numeric_limits<uint16_t>::max();
 };
 
 }  // namespace Voluma

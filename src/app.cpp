@@ -14,6 +14,7 @@ int main(int argc, const char** argv) {
 
     auto dcmData = VolData::loadFromDisk(argv[1]);
     logInfo("patient info: {}", dcmData->getPatientData());
+    dcmData->save("output.exr");
 
     return 0;
 }
