@@ -6,9 +6,12 @@ function vl_target(name)
 target(name)
     -- c latest + c++20
     set_languages("clatest", "cxx20")
+    -- enforce encoding
+    set_encodings("utf-8")
     -- force clang-cl toolchain on windows
     if is_plat("windows") then
         set_toolchains("clang-cl")
+        add_defines("NOMINMAX", "WIN32_LEAN_AND_MEAN")
     end
 end
 
@@ -17,7 +20,11 @@ includes("ext/vl_dcmtk.lua")
 add_requires("fmt 11.0.2")
 add_requires("lodepng")
 add_requires("tinyexr v1.0.9")
-add_requires("vl_dcmtk 3.6.8", {configs = {shared = true, libtiff = true}})
+add_requires("vl_dcmtk 3.6.8", {
+    configs = {shared = true, libtiff = false,
+    libpng = false, openssl = false, libxml2 = false,
+    zlib = false, libsndfile = false, libiconv = false,
+    runtimes = "MD"}})
 
 -- Voluma source code and tests
 includes("src", "tests")
