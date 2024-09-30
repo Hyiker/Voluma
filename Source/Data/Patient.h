@@ -1,6 +1,6 @@
 #include <string>
 
-#include "core/enum.h"
+#include "Core/Enum.h"
 namespace Voluma {
 enum class Gender { Male, Female, Others };
 struct PatientData {

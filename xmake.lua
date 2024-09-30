@@ -11,12 +11,12 @@ target(name)
     -- force clang-cl toolchain on windows
     if is_plat("windows") then
         set_toolchains("clang-cl")
-        add_defines("NOMINMAX", "WIN32_LEAN_AND_MEAN")
+        add_defines("NOMINMAX", "WIN32_LEAN_AND_MEAN", "_CRT_SECURE_NO_WARNINGS")
     end
 end
 
 -- Third party libraries
-includes("ext/vl_dcmtk.lua")
+includes("External/vl_dcmtk.lua")
 add_requires("fmt 11.0.2")
 add_requires("lodepng")
 add_requires("tinyexr v1.0.9")
@@ -27,4 +27,4 @@ add_requires("vl_dcmtk 3.6.8", {
     runtimes = "MD"}})
 
 -- Voluma source code and tests
-includes("src", "tests")
+includes("Source", "Tests")

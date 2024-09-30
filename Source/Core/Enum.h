@@ -5,7 +5,7 @@
 #include <span>
 #include <type_traits>
 
-#include "utils/logger.h"
+#include "Utils/Logger.h"
 
 namespace Voluma {
 // Helper using ADL to find EnumInfo in other namespaces.

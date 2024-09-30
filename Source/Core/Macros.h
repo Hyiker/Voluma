@@ -27,8 +27,12 @@
 #error "Unsupported platform"
 #endif
 
+#ifdef VL_SHARED
 #ifdef VL_MODULE
 #define VL_API VL_API_EXPORT
 #else
 #define VL_API VL_API_IMPORT
+#endif
+#else
+#define VL_API
 #endif

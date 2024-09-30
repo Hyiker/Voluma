@@ -5,8 +5,8 @@
 
 #include <string>
 
-#include "data/VolData.h"
-#include "utils/logger.h"
+#include "Data/VolData.h"
+#include "Utils/Logger.h"
 using namespace Voluma;
 
 int main(int argc, const char** argv) {

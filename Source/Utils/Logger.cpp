@@ -1,4 +1,4 @@
-#include "logger.h"
+#include "Logger.h"
 
 #include <fmt/chrono.h>
 
@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <mutex>
 
-#include "core/error.h"
+#include "Core/Error.h"
 
 namespace Voluma {
 static std::mutex loggerMutex;  // mutex for thread-safe logging.

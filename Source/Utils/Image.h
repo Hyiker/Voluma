@@ -3,7 +3,7 @@
 #include <filesystem>
 #include <vector>
 
-#include "core/enum.h"
+#include "Core/Enum.h"
 
 namespace Voluma {
 

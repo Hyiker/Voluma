@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <string_view>
 
-#include "core/macros.h"
+#include "Core/Macros.h"
 namespace Voluma {
 
 class VL_API Logger {

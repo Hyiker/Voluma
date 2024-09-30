@@ -1,6 +1,7 @@
 #include "VolData.h"
 
 #include <dcmtk/dcmdata/dcpixel.h>
+#include <dcmtk/dcmimgle/dcmImage.h>
 #include <dcmtk/dcmimgle/dipixel.h>
 #include <dcmtk/dcmimgle/diutils.h>
 
@@ -9,11 +10,10 @@
 #include <string>
 #include <vector>
 
-#include "core/error.h"
-#include "data/DcmParser.h"
-#include "dcmtk/dcmimgle/dcmimage.h"
-#include "utils/image.h"
-#include "utils/logger.h"
+#include "Core/Error.h"
+#include "Data/DcmParser.h"
+#include "Utils/Image.h"
+#include "Utils/Logger.h"
 namespace Voluma {
 
 std::shared_ptr<VolData> VolData::loadFromDisk(const std::string& filename) {

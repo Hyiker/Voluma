@@ -1,4 +1,4 @@
-#include "image.h"
+#include "Image.h"
 
 #include <lodepng.h>
 
@@ -7,9 +7,9 @@
 #include <filesystem>
 #include <span>
 
-#include "core/error.h"
-#include "core/math.h"
-#include "logger.h"
+#include "Core/Error.h"
+#include "Core/Math.h"
+#include "Logger.h"
 
 #define TINYEXR_IMPLEMENTATION
 #include <tinyexr.h>

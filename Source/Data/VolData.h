@@ -8,8 +8,8 @@
 #include <string>
 
 #include "Patient.h"
-#include "core/enum.h"
-#include "data/DcmParser.h"
+#include "Core/Enum.h"
+#include "Data/DcmParser.h"
 
 namespace Voluma {
 

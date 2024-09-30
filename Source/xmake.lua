@@ -5,8 +5,8 @@ vl_target("Voluma")
     add_packages("vl_dcmtk", "lodepng", "tinyexr")
     -- Source files
     add_files(
-        "utils/*.cpp",
-        "data/*.cpp",
+        "Utils/*.cpp",
+        "Data/*.cpp",
         "app.cpp"
     )
     -- Include directory
