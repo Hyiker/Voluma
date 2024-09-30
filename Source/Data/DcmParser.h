@@ -1,8 +1,9 @@
 #pragma once
 
-#include <vector>
 #include <dcmtk/dcmdata/dcdatset.h>
 #include <dcmtk/dcmdata/dcdeftag.h>
+
+#include <vector>
 
 namespace Voluma {
 class DcmParser {

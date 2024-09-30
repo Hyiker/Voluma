@@ -55,7 +55,6 @@ BreakConstructorInitializers: BeforeColon
 BreakAfterJavaFieldAnnotations: false
 BreakStringLiterals: true
 ColumnLimit: 80
-CommentPragmas: "^ IWYU pragma:"
 CompactNamespaces: false
 ConstructorInitializerAllOnOneLineOrOnePerLine: true
 ConstructorInitializerIndentWidth: 4
@@ -66,6 +65,10 @@ DerivePointerAlignment: true
 DisableFormat: false
 ExperimentalAutoDetectBinPacking: false
 FixNamespaceComments: true
+ReflowComments: true
+CommentPragmas: '^\\.+'
+SpacesBeforeTrailingComments: 1
+PenaltyBreakComment: 0
 ForEachMacros:
   - foreach
   - Q_FOREACH

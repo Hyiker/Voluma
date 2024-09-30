@@ -4,16 +4,18 @@
 #include <fmt/core.h>
 
 #include <cstdint>
+#include <filesystem>
 #include <limits>
 #include <string>
 
-#include "Patient.h"
 #include "Core/Enum.h"
 #include "Data/DcmParser.h"
+#include "Patient.h"
+#include "VolSlice.h"
 
 namespace Voluma {
 
-class VolData {
+class VL_API VolData {
    public:
     struct ScanMeta {
         uint32_t rowCount, colCount;  ///< Image size
@@ -22,55 +24,54 @@ class VolData {
         float pixelSpaceV,
             pixelSpaceH;  ///< Vertical and Horizontal pixel spacing
 
-        // Slice metadata
-        float sliceThickness;  ///< 3D slice image thickness
-        float
-            sliceLocation;  ///< Depth location of the slice, could be negative
-
         // Rescale
         float rescaleIntercept;
         float rescaleSlope;
+
+        bool operator==(const ScanMeta& other);
+
+        std::string toString() const;
     };
 
     VolData() = default;
-    VolData(DcmFileFormat& dcmFile);
+
     VolData(const VolData& d) = delete;
 
-    static std::shared_ptr<VolData> loadFromDisk(const std::string& filename);
+    static std::shared_ptr<VolData> loadFromDisk(
+        const std::filesystem::path& folder);
 
     // Member getter
     const auto& getPatientData() { return mPatientData; }
+
+    const auto& getScanMetaData() { return mMetaData; }
 
     auto getRowWidth() const { return mMetaData.rowCount; }
 
     auto getColWidth() const { return mMetaData.colCount; }
 
-    void save(const std::filesystem::path& filename) const;
+    /** Save slice image to disk.
+     */
+    void saveSlice(const std::filesystem::path& filename, int index) const;
+    int getSliceCount() const { return mVolumeSliceData.size(); }
+
+    // TODO: Move otherwhere
+    PatientData loadPatientData(const DcmParser& parser) const;
+    ScanMeta loadScanMeta(const DcmParser& parser) const;
+
+    bool verify(const DcmParser& parser) const;
+    void addSlice(VolSlice&& slice);
+
+    void finalize();
 
    private:
-    void loadPatientData(const DcmParser& parser);
-
-    void loadScanMeta(const DcmParser& parser);
-
-    void loadImage(const DcmParser& parser);
-
     // File metadata
     PatientData mPatientData;  ///< Patient data
     ScanMeta mMetaData;        ///< Scanning metadata
 
-    // Volume data
-    std::vector<uint16_t> mVolumeSliceData;
-    uint16_t mMaxPixelValue = 0u;
-    uint16_t mMinPixelValue = std::numeric_limits<uint16_t>::max();
+    // CT Slices
+    std::vector<VolSlice> mVolumeSliceData;
 };
 
 }  // namespace Voluma
 
-template <>
-class fmt::formatter<Voluma::PatientData> : formatter<std::string> {
-   public:
-    constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
-    auto format(const Voluma::PatientData& d, format_context& ctx) const {
-        return formatter<std::string>::format(d.toString(), ctx);
-    }
-};
+VL_FMT(Voluma::VolData::ScanMeta)

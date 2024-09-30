@@ -17,3 +17,5 @@ VL_ENUM_INFO(Gender, {{Gender::Male, "Male"},
                       {Gender::Others, "Others"}})
 VL_ENUM_REGISTER(Gender);
 }  // namespace Voluma
+
+VL_FMT(Voluma::PatientData)

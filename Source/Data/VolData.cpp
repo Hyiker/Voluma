@@ -5,6 +5,7 @@
 #include <dcmtk/dcmimgle/dipixel.h>
 #include <dcmtk/dcmimgle/diutils.h>
 
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
@@ -14,49 +15,83 @@
 #include "Data/DcmParser.h"
 #include "Utils/Image.h"
 #include "Utils/Logger.h"
+#include "fmt/format.h"
 namespace Voluma {
-
-std::shared_ptr<VolData> VolData::loadFromDisk(const std::string& filename) {
-    DcmFileFormat dfile;
-
-    OFCondition result = dfile.loadFile(filename.c_str());
-    if (result.bad()) logError("Failed to load file.");
-
-    return std::make_shared<VolData>(dfile);
+using ScanMeta = VolData::ScanMeta;
+bool ScanMeta::operator==(const ScanMeta& other) {
+    return rowCount == other.rowCount && colCount == other.colCount &&
+           //? Should we verify float here
+           pixelSpaceV == other.pixelSpaceV &&
+           pixelSpaceH == other.pixelSpaceH &&
+           rescaleIntercept == other.rescaleIntercept &&
+           rescaleSlope == other.rescaleSlope;
 }
 
-void VolData::save(const std::filesystem::path& filename) const {
+std::string ScanMeta::toString() const {
+    return fmt::format("ScanMeta(res = ({}, {}), pixelSpace = ({}, {}))",
+                       rowCount, colCount, pixelSpaceH, pixelSpaceV);
+}
+
+std::shared_ptr<VolData> VolData::loadFromDisk(
+    const std::filesystem::path& folder) {
+    auto pVolData = std::make_shared<VolData>();
+    bool isFirst = true;
+
+    for (const auto& entry : std::filesystem::directory_iterator(folder)) {
+        auto fn = entry.path();
+        if (entry.is_regular_file() && fn.extension() == ".dcm") {
+            DcmFileFormat dfile;
+            OFCondition result = dfile.loadFile(fn.string().c_str());
+
+            if (result.bad())
+                logError("Failed to load slice file {}.", fn.string());
+
+            auto* pDataset = dfile.getDataset();
+            DcmParser parser(pDataset);
+
+            if (isFirst) {
+                // Read meta data from the first .dcm file
+                pVolData->mPatientData = pVolData->loadPatientData(parser);
+                pVolData->mMetaData = pVolData->loadScanMeta(parser);
+            } else {
+                // Otherwise, verify the metadata and patient data
+                if (!pVolData->verify(parser))
+                    logError(
+                        "Slice file {} has divergent meta data with previous "
+                        "ones.",
+                        fn.string());
+            }
+
+            pVolData->addSlice(VolSlice(parser));
+            isFirst = false;
+        }
+    }
+
+    pVolData->finalize();
+
+    return pVolData;
+}
+
+void VolData::saveSlice(const std::filesystem::path& filename,
+                        int index) const {
     if (filename.extension() != ".exr") {
         logFatal("VolData::save only support Exr format.");
     }
 
+    VL_ASSERT(index < mVolumeSliceData.size());
+    const VolSlice& slice = mVolumeSliceData[index];
+
     Image image(getColWidth(), getRowWidth(), 1, ColorSpace::Linear);
     for (int i = 0; i < image.getArea(); i++) {
         float normalizedVal =
-            float(mVolumeSliceData[i]) / float(mMaxPixelValue - mMinPixelValue);
+            float(slice.mRawData[i]) /
+            float(slice.mMaxPixelValue - slice.mMinPixelValue);
         image.setPixel(i, 0, normalizedVal);
     }
     image.writeEXR(filename);
 }
 
-VolData::VolData(DcmFileFormat& dcmFile) {
-    auto* pMeta = dcmFile.getMetaInfo();
-    auto* pDataset = dcmFile.getDataset();
-
-    VL_ASSERT(pDataset != nullptr);
-    VL_ASSERT(pMeta != nullptr);
-
-    DcmParser parser(pDataset);
-
-    // Read and load metadata
-    loadPatientData(parser);
-    loadScanMeta(parser);
-
-    // Read slice images
-    loadImage(parser);
-}
-
-void VolData::loadPatientData(const DcmParser& parser) {
+PatientData VolData::loadPatientData(const DcmParser& parser) const {
     // Initialize patient data
     std::string id, name, birthDate;
 
@@ -69,16 +104,17 @@ void VolData::loadPatientData(const DcmParser& parser) {
                   : (genderStr == "F") ? Gender::Female
                                        : Gender::Others;
 
-    mPatientData.id = id;
-    mPatientData.name = name;
-    mPatientData.birthDate = birthDate;
-    mPatientData.gender = gender;
+    PatientData pd;
+    pd.id = id;
+    pd.name = name;
+    pd.birthDate = birthDate;
+    pd.gender = gender;
+    return pd;
 }
 
-void VolData::loadScanMeta(const DcmParser& parser) {
+ScanMeta VolData::loadScanMeta(const DcmParser& parser) const {
     uint32_t rows, cols;
     float pixelSpaceV, pixelSpaceH;
-    float sliceThickness, sliceLocation;
     float rescaleIntercept, rescaleSlope;
 
     rows = parser.getU16(DCM_Rows);
@@ -89,29 +125,41 @@ void VolData::loadScanMeta(const DcmParser& parser) {
     pixelSpaceH = std::stof(pixelSpace.substr(0, segEnd));
     pixelSpaceV = std::stof(pixelSpace.substr(segEnd + 1));
 
-    sliceThickness = (float)parser.getF64(DCM_SliceThickness);
-    sliceLocation = (float)parser.getF64(DCM_SliceLocation);
-
     rescaleIntercept = (float)parser.getF64(DCM_RescaleIntercept);
     rescaleSlope = (float)parser.getF64(DCM_RescaleSlope);
 
-    mMetaData.rowCount = rows;
-    mMetaData.colCount = cols;
-    mMetaData.pixelSpaceV = pixelSpaceV;
-    mMetaData.pixelSpaceH = pixelSpaceH;
-    mMetaData.sliceThickness = sliceThickness;
-    mMetaData.sliceLocation = sliceLocation;
-    mMetaData.rescaleIntercept = rescaleIntercept;
-    mMetaData.rescaleSlope = rescaleSlope;
+    ScanMeta meta;
+    meta.rowCount = rows;
+    meta.colCount = cols;
+    meta.pixelSpaceV = pixelSpaceV;
+    meta.pixelSpaceH = pixelSpaceH;
+    meta.rescaleIntercept = rescaleIntercept;
+    meta.rescaleSlope = rescaleSlope;
+    return meta;
 }
 
-void VolData::loadImage(const DcmParser& parser) {
-    mVolumeSliceData = parser.getU16Array(DCM_PixelData);
+void VolData::addSlice(VolSlice&& slice) {
+    mVolumeSliceData.emplace_back(std::move(slice));
+}
 
-    for (auto v : mVolumeSliceData) {
-        mMaxPixelValue = std::max(v, mMaxPixelValue);
-        mMinPixelValue = std::min(v, mMinPixelValue);
-    }
+bool VolData::verify(const DcmParser& parser) const {
+    bool isSame = true;
+    // Verify patient id
+    isSame |= mPatientData.id == parser.getString(DCM_PatientID);
+
+    auto meta = loadScanMeta(parser);
+    // Verify slice meta data
+    isSame |= mMetaData == meta;
+
+    return isSame;
+}
+
+void VolData::finalize() {
+    // Reorder slices by their location
+    std::sort(mVolumeSliceData.begin(), mVolumeSliceData.end(),
+              [](const VolSlice& s1, const VolSlice& s2) {
+                  return s1.mLocation <= s2.mLocation;
+              });
 }
 
 }  // namespace Voluma

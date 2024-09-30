@@ -36,3 +36,15 @@
 #else
 #define VL_API
 #endif
+
+#define VL_FMT(cls)                                                   \
+    template <>                                                       \
+    class fmt::formatter<cls> : formatter<std::string> {              \
+       public:                                                        \
+        constexpr auto parse(format_parse_context& ctx) {             \
+            return ctx.begin();                                       \
+        }                                                             \
+        auto format(const cls& d, format_context& ctx) const {        \
+            return formatter<std::string>::format(d.toString(), ctx); \
+        }                                                             \
+    };

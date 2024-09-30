@@ -16,10 +16,17 @@ target(name)
 end
 
 -- Third party libraries
-includes("External/vl_dcmtk.lua")
+includes("External/vl_dcmtk.lua", "External/slangd.lua")
 add_requires("fmt 11.0.2")
 add_requires("lodepng")
 add_requires("tinyexr v1.0.9")
+add_requires("glfw 3.4", {
+    configs = {glfw_include = "system"}})
+add_requires("imgui v1.91.1", {
+    configs = {dx12 = true, glfw = true}})
+add_requires("slangd")
+add_requires("glm 1.0.1", {
+    configs = {header_only = false, cxx_standard = "20"}})
 add_requires("vl_dcmtk 3.6.8", {
     configs = {shared = true, libtiff = false,
     libpng = false, openssl = false, libxml2 = false,

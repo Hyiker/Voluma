@@ -1,6 +1,4 @@
 package("vl_dcmtk")
-    set_base("dcmtk")
-    
     set_homepage("https://dcmtk.org/dcmtk.php.en")
     set_description("DCMTK - DICOM Toolkit")
     set_license("BSD-3-Clause")
@@ -10,8 +8,6 @@ package("vl_dcmtk")
     end})
     add_versions("3.6.6", "6859c62b290ee55677093cccfd6029c04186d91cf99c7642ae43627387f3458e")
     add_versions("3.6.8", "232076655503138debf2f624109f1799e539354f186ce4e04b27cf82a9d8720f")
-
-    set_sourcedir([[C:\Users\admin\Downloads\dcmtk-DCMTK-3.6.8]])
 
     local configdeps = {libtiff    = "TIFF",
                         libpng     = "PNG",
