@@ -26,8 +26,8 @@ void Image::setPixel(int x, int y, int channels, float value) {
     setPixel(x + y * mWidth, channels, value);
 }
 void Image::setPixel(int index, int channels, float value) {
-    VL_ASSERT(index < m_width * m_height);
-    VL_ASSERT(channels < this->m_channels);
+    VL_ASSERT(index < mWidth * mHeight);
+    VL_ASSERT(channels < this->mChannels);
     mRawData[channels][index] = value;
 }
 
@@ -64,14 +64,16 @@ void Image::writeEXR(const std::filesystem::path& filename) const {
     header.requested_pixel_types =
         static_cast<int*>(malloc(sizeof(int) * header.num_channels));
     for (int i = 0; i < header.num_channels; i++) {
-        header.pixel_types[i] =
-            TINYEXR_PIXELTYPE_FLOAT;  // pixel type of input image
-        header.requested_pixel_types[i] =
-            TINYEXR_PIXELTYPE_HALF;  // pixel type of output image to be stored
-                                     // in .EXR
+        header.pixel_types[i] = TINYEXR_PIXELTYPE_FLOAT; // pixel type of input
+                                                         // image
+        header.requested_pixel_types[i] = TINYEXR_PIXELTYPE_HALF; // pixel type
+                                                                  // of output
+                                                                  // image to be
+                                                                  // stored in
+                                                                  // .EXR
     }
 
-    const char* err = nullptr;  // or nullptr in C++11 or later.
+    const char* err = nullptr; // or nullptr in C++11 or later.
     int ret =
         SaveEXRImageToFile(&image, &header, filename.string().c_str(), &err);
 
@@ -212,7 +214,7 @@ void Image::writePNG(const std::filesystem::path& filename, bool toSrgb) const {
                 (unsigned char)(hdrToSdr(mRawData[c][i]) * 255.f);
         }
     }
-    std::vector<unsigned char> buffer;  // Raw png data
+    std::vector<unsigned char> buffer; // Raw png data
     if (auto error = lodepng::encode(buffer, image, mWidth, mHeight, state);
         error) {
         logFatal("PNG encode error: {}", lodepng_error_text(error));
@@ -275,4 +277,4 @@ Image Image::load(const std::filesystem::path& filename) {
     return image;
 }
 
-}  // namespace Voluma
+} // namespace Voluma

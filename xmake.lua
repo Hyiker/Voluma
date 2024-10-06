@@ -4,6 +4,7 @@ set_warnings("allextra")
 
 function vl_target(name)
 target(name)
+    add_rules("slang")
     -- c latest + c++20
     set_languages("clatest", "cxx20")
     -- enforce encoding

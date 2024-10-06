@@ -9,9 +9,9 @@
 #include "Core/Error.h"
 
 namespace Voluma {
-static std::mutex loggerMutex;  // mutex for thread-safe logging.
-static Logger* pLogger;         // singleton logger.
-static FILE* pFd{nullptr};      // file descriptor for log file.
+static std::mutex loggerMutex; // mutex for thread-safe logging.
+static Logger* pLogger;        // singleton logger.
+static FILE* pFd{nullptr};     // file descriptor for log file.
 
 constexpr std::string_view s_timeFormat = "{:%T}";
 constexpr std::string_view s_logFormat = "[{level:<7} {time:>16}] {message}\n";
@@ -104,4 +104,4 @@ void Logger::setLogLevel(Level level) { pLogger->mLogLevel = level; }
 
 bool Logger::getLogToStdout() { return pLogger->mLogToStdout; }
 
-}  // namespace Voluma
+} // namespace Voluma

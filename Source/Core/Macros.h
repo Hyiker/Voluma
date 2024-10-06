@@ -1,11 +1,11 @@
 #pragma once
 
 #if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
-#define VL_WINDOWS
+#define VL_WINDOWS 1
 #elif defined(__APPLE__) || defined(__MACH__)
-#define VL_MACOSX
+#define VL_MACOSX 1
 #else
-#define VL_LINUX
+#define VL_LINUX 1
 #endif
 
 #ifdef __clang__

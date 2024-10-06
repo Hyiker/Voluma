@@ -43,4 +43,4 @@ std::vector<uint16_t> DcmParser::getU16Array(const DcmTagKey& key) const {
     return std::vector<uint16_t>(pData, pData + cnt);
 }
 
-}  // namespace Voluma
+} // namespace Voluma

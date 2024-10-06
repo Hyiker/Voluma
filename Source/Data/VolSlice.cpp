@@ -19,4 +19,4 @@ VolSlice::VolSlice(VolSlice&& other) noexcept
       mLocation(other.mLocation),
       mMaxPixelValue(other.mMaxPixelValue),
       mMinPixelValue(other.mMinPixelValue) {}
-}  // namespace Voluma
+} // namespace Voluma

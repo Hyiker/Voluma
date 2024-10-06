@@ -28,3 +28,23 @@ package("slangd")
             }
         ]] }, {configs = {languages = "c++17"}}))
     end)
+
+rule("slang")
+    set_extensions(".slang", ".slangh")
+    on_build_file(function (target, sourcefile, opt)
+        import("core.project.depend")
+        import("utils.progress") -- it only for v2.5.9, we need use print to show progress below v2.5.8
+
+        -- make sure build directory exists
+        os.mkdir(target:targetdir())
+
+        -- replace .md with .html
+        local targetfile = path.join(target:targetdir(), path.filename(sourcefile))
+
+        -- only rebuild the file if its changed since last run
+        depend.on_changed(function ()
+            -- call pandoc to make a standalone html file from a markdown file
+            os.trycp(sourcefile, targetfile)
+            progress.show(opt.progress, "${color.build.object}slang %s", sourcefile)
+        end, {files = sourcefile})
+    end)

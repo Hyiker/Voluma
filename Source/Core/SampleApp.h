@@ -1,18 +1,58 @@
 #pragma once
+#include <slang-com-helper.h>
+#include <slang-gfx.h>
+
+#include <cstdint>
+#include <vector>
+
 #include "Window.h"
+#include "slang-com-ptr.h"
 
 namespace Voluma {
-class SampleApp : public Window::ICallbacks {
-public:
-  SampleApp();
+class SampleApp : public Window::ICallbacks, public gfx::IDebugCallback {
+   public:
+    SampleApp();
 
-  virtual void handleWindowSizeChange() {}
-  virtual void handleRenderFrame() {}
-  virtual void handleKeyboardEvent(const KeyboardEvent &keyEvent) {}
-  virtual void handleMouseEvent(const MouseEvent &mouseEvent) {}
-  virtual void handleDroppedFile(const std::filesystem::path &path) {}
+    SampleApp(const SampleApp &other) = delete;
+    SampleApp(SampleApp &&other) noexcept;
 
-private:
-  std::shared_ptr<Window> mpWindow;
+    void createFramebuffers();
+
+    void initShader(gfx::IShaderProgram **pShader);
+
+    void beginLoop();
+
+    virtual void handleWindowSizeChange() override {}
+    virtual void handleRenderFrame() override;
+    virtual void handleKeyboardEvent(const KeyboardEvent &keyEvent) override {}
+    virtual void handleMouseEvent(const MouseEvent &mouseEvent) override {}
+    virtual void handleDroppedFile(const std::filesystem::path &path) override {
+    }
+    virtual SLANG_NO_THROW void SLANG_MCALL
+    handleMessage(gfx::DebugMessageType type, gfx::DebugMessageSource source,
+                  const char *message) override;
+
+    SampleApp &operator=(const SampleApp &other) = delete;
+    SampleApp &operator=(SampleApp &&other) noexcept;
+
+    ~SampleApp();
+
+   private:
+    void executeRenderFrame(int framebufferIndex);
+
+    static const int kSwapChainImageCount = 2;
+
+    std::shared_ptr<Window> mpWindow;
+
+    Slang::ComPtr<gfx::IDevice> mDevice; ///< GPU device.
+    Slang::ComPtr<gfx::ISwapchain> mSwapchain;
+    Slang::ComPtr<gfx::ICommandQueue> mQueue; ///< Command queue.
+    Slang::ComPtr<gfx::IFramebufferLayout> mFramebufferLayout;
+    std::vector<Slang::ComPtr<gfx::IFramebuffer>> mFramebuffers;
+    std::vector<Slang::ComPtr<gfx::ITransientResourceHeap>> mTransientHeaps;
+    Slang::ComPtr<gfx::IRenderPassLayout> mRenderPass;
+
+    Slang::ComPtr<gfx::IBufferResource> mVertexBuffer; ///<
+    Slang::ComPtr<gfx::IPipelineState> mPipelineState; ///<
 };
 } // namespace Voluma
