@@ -394,7 +394,8 @@ Window::Window(const Desc &desc, ICallbacks *pCallbacks)
     mNativeHandle = glfwGetWin32Window(mpGLFWWindow);
     VL_ASSERT(mNativeHandle);
 #else
-#error
+    mNativeHandle = (WindowHandle)glfwGetCocoaWindow(mpGLFWWindow);
+    VL_ASSERT(mNativeHandle);
 #endif
 
     updateWindowSize();

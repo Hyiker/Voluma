@@ -5,6 +5,7 @@
 
 #include "Core/Math.h"
 #include "Macros.h"
+
 struct GLFWwindow;
 namespace Voluma {
 
@@ -14,7 +15,7 @@ struct MouseEvent;
 #if VL_WINDOWS
 using WindowHandle = void *;
 #else
-#error ""
+using WindowHandle = struct objc_object *;
 #endif
 
 class VL_API Window {
