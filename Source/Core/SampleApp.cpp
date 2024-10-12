@@ -114,8 +114,7 @@ SampleApp::SampleApp() {
         mDevice->createBufferResource(vertexBufferDesc, &kVertexData[0]);
     VL_ASSERT(mVertexBuffer != nullptr);
 
-    Slang::ComPtr<gfx::IShaderProgram> program;
-    initShader(program.writeRef());
+    Slang::ComPtr<gfx::IShaderProgram> program = createRasterizeShader();
 
     // Create pipeline
     GraphicsPipelineStateDesc desc;
@@ -191,7 +190,7 @@ void diagnoseIfNeeded(slang::IBlob* diagnosticsBlob) {
     }
 }
 
-void SampleApp::initShader(gfx::IShaderProgram** pShader) {
+Slang::ComPtr<gfx::IShaderProgram> SampleApp::createRasterizeShader() {
     ComPtr<slang::ISession> slangSession;
     slangSession = mDevice->getSlangSession();
 
@@ -199,9 +198,7 @@ void SampleApp::initShader(gfx::IShaderProgram** pShader) {
     slang::IModule* module =
         slangSession->loadModule("triangle.slang", diagnosticsBlob.writeRef());
     diagnoseIfNeeded(diagnosticsBlob);
-    if (!module) {
-        logFatal("");
-    }
+    VL_ASSERT(module != nullptr);
 
     ComPtr<slang::IEntryPoint> vertexEntryPoint;
     module->findEntryPointByName("vertexMain", vertexEntryPoint.writeRef());
@@ -225,9 +222,36 @@ void SampleApp::initShader(gfx::IShaderProgram** pShader) {
         diagnosticsBlob.writeRef());
     diagnoseIfNeeded(diagnosticsBlob);
 
-    gfx::IShaderProgram::Desc programDesc = {};
+    IShaderProgram::Desc programDesc = {};
     programDesc.slangGlobalScope = linkedProgram;
-    mDevice->createProgram(programDesc, pShader);
+    return mDevice->createProgram(programDesc);
+}
+
+Slang::ComPtr<gfx::IShaderProgram> SampleApp::createComputeShader() {
+    ComPtr<slang::ISession> slangSession;
+    slangSession = mDevice->getSlangSession();
+
+    ComPtr<slang::IBlob> diagnosticsBlob;
+    slang::IModule* module =
+        slangSession->loadModule("viz.cs.slang", diagnosticsBlob.writeRef());
+    diagnoseIfNeeded(diagnosticsBlob);
+    VL_ASSERT(module != nullptr);
+
+    ComPtr<slang::IEntryPoint> computeEntryPoint;
+    module->findEntryPointByName("main", computeEntryPoint.writeRef());
+
+    std::vector<slang::IComponentType*> componentTypes{module,
+                                                       computeEntryPoint};
+
+    ComPtr<slang::IComponentType> linkedProgram;
+    slangSession->createCompositeComponentType(
+        componentTypes.data(), componentTypes.size(), linkedProgram.writeRef(),
+        diagnosticsBlob.writeRef());
+    diagnoseIfNeeded(diagnosticsBlob);
+
+    IShaderProgram::Desc programDesc = {};
+    programDesc.slangGlobalScope = linkedProgram;
+    return mDevice->createProgram(programDesc);
 }
 
 void SampleApp::handleMessage(DebugMessageType type, DebugMessageSource source,
@@ -271,78 +295,9 @@ void SampleApp::executeRenderFrame(int framebufferIndex) {
     viewport.extentY = mSwapchain->getDesc().height;
     renderEncoder->setViewportAndScissor(viewport);
 
-    // In order to bind shader parameters to the pipeline, we need
-    // to know how those parameters were assigned to
-    // locations/bindings/registers for the target graphics API.
-    //
-    // The Slang compiler assigns locations to parameters in a deterministic
-    // fashion, so it is possible for a programmer to hard-code locations
-    // into their application code that will match up with their shaders.
-    //
-    // Hard-coding of locations can become intractable as an application needs
-    // to support more different target platforms and graphics APIs, as well
-    // as more shaders with different specialized variants.
-    //
-    // Rather than rely on hard-coded locations, our examples will make use of
-    // reflection information provided by the Slang compiler (see
-    // `programLayout` above), and our example graphics API layer will translate
-    // that reflection information into a layout for a "root shader object."
-    //
-    // The root object will store values/bindings for all of the parameters in
-    // the `IShaderProgram` used to create the pipeline state. At a conceptual
-    // level we can think of `rootObject` as representing the "global scope" of
-    // the shader program that was loaded; it has entries for each global shader
-    // parameter that was declared.
-    //
-    // Readers who are familiar with D3D12 or Vulkan might think of this root
-    // layout as being similar in spirit to a "root signature" or "pipeline
-    // layout."
-    //
-    // We start parameter binding by binding the pipeline state in command
-    // encoder. This method will return a transient root shader object for us to
-    // write our shader parameters into.
-    //
     auto rootObject = renderEncoder->bindPipeline(mPipelineState);
 
-    // We will update the model-view-projection matrix that is passed
-    // into the shader code via the `Uniforms` buffer on a per-frame
-    // basis, even though the data that is loaded does not change
-    // per-frame (we always use an identity matrix).
-    //
     auto deviceInfo = mDevice->getDeviceInfo();
-
-    // We know that `rootObject` is a root shader object created
-    // from our program, and that it is set up to hold values for
-    // all the parameter of that program. In order to actually
-    // set values, we need to be able to look up the location
-    // of speciic parameter that we want to set.
-    //
-    // Our example graphics API layer supports this operation
-    // with the idea of a *shader cursor* which can be thought
-    // of as pointing "into" a particular shader object at
-    // some location/offset. This design choice abstracts over
-    // the many ways that different platforms and APIs represent
-    // the necessary offset information.
-    //
-    // We construct an initial shader cursor that points at the
-    // entire shader program. You can think of this as akin to
-    // a diretory path of `/` for the root directory in a file
-    // system.
-    //
-    //
-    // Next, we use a convenience overload of `operator[]` to
-    // navigate from the root cursor down to the parameter we
-    // want to set.
-    //
-    // The operation `rootCursor["Uniforms"]` looks up the
-    // offset/location of the global shader parameter `Uniforms`
-    // (which is a uniform/constant buffer), and the subsequent
-    // `["modelViewProjection"]` step navigates from there down
-    // to the member named `modelViewProjection` in that buffer.
-    //
-    // Once we have formed a cursor that "points" at the
-    // model-view projection matrix, we can set its data directly.
-    //
 
     ShaderVar rootVar(rootObject);
     float4x4 proj;
@@ -381,6 +336,6 @@ void SampleApp::executeRenderFrame(int framebufferIndex) {
 
     mSwapchain->present();
 }
-SampleApp::~SampleApp() {}
+SampleApp::~SampleApp() = default;
 
 } // namespace Voluma

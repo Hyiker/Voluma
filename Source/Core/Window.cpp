@@ -2,8 +2,6 @@
 
 #include "Core/Error.h"
 #include "GLFW.h"
-#include "GLFW/glfw3.h"
-#include "GLFW/glfw3native.h"
 #include "Utils/Logger.h"
 #include "Utils/UiInputs.h"
 
@@ -323,6 +321,14 @@ class ApiCallbacks {
     }
 };
 
+Window::Window(Window &&other) noexcept
+    : mDesc(std::move(other.mDesc)),
+      mpGLFWWindow(other.mpGLFWWindow),
+      mpCallbacks(other.mpCallbacks) {
+    other.mpGLFWWindow = nullptr;
+    other.mpCallbacks = nullptr;
+}
+
 void Window::shutdown() { glfwSetWindowShouldClose(mpGLFWWindow, 1); }
 
 void Window::msgLoop() {
@@ -359,6 +365,16 @@ void Window::resize(uint32_t width, uint32_t height) {
     updateWindowSize();
 
     mpCallbacks->handleWindowSizeChange();
+}
+
+Window &Window::operator=(Window &&other) noexcept {
+    mDesc = std::move(other.mDesc);
+    mpGLFWWindow = other.mpGLFWWindow;
+    mpCallbacks = other.mpCallbacks;
+
+    other.mpGLFWWindow = nullptr;
+    other.mpCallbacks = nullptr;
+    return *this;
 }
 
 std::shared_ptr<Window> Window::create(const Desc &desc,
@@ -415,8 +431,12 @@ Window::Window(const Desc &desc, ICallbacks *pCallbacks)
     glfwFocusWindow(mpGLFWWindow);
 }
 Window::~Window() {
+    // NSWindow autorelease cause double free on glfwDestroy
+    // https://github.com/glfw/glfw/issues/1018
+#if !VL_MACOSX
     glfwDestroyWindow(mpGLFWWindow);
 
     glfwTerminate();
+#endif
 }
 } // namespace Voluma

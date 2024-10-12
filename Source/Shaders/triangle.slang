@@ -32,7 +32,8 @@ struct VertexStageOutput {
     float4 sv_position : SV_Position;
 };
 
-[shader("vertex")] VertexStageOutput vertexMain(
+[shader("vertex")]
+VertexStageOutput vertexMain(
     AssembledVertex assembledVertex) {
     VertexStageOutput output;
 
@@ -47,7 +48,8 @@ struct VertexStageOutput {
 
     // Fragment Shader
 
-    [shader("fragment")] float4 fragmentMain(CoarseVertex coarseVertex
+[shader("fragment")] 
+float4 fragmentMain(CoarseVertex coarseVertex
                                              : CoarseVertex)
     : SV_Target {
     float3 color = coarseVertex.color;

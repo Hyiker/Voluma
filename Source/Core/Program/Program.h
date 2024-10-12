@@ -20,12 +20,8 @@ enum class ShaderType {
     Count          ///< Shader Type count
 };
 
-class VL_API ShaderProgram {
-   public:
-
-   private:
+struct VL_API Program {
     // const Slang::ProgramDesc mDesc;
-
-    Slang::ComPtr<gfx::IShaderProgram> mGfxProgram;
+    Slang::ComPtr<gfx::IPipelineState> pipelineState;
 };
 } // namespace Voluma

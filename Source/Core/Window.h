@@ -40,6 +40,10 @@ class VL_API Window {
         virtual void handleDroppedFile(const std::filesystem::path &path) = 0;
     };
 
+    Window(const Window &) = delete;
+
+    Window(Window &&other) noexcept;
+
     void updateWindowSize();
 
     void shutdown();
@@ -54,6 +58,11 @@ class VL_API Window {
 
     static std::shared_ptr<Window> create(const Desc &desc,
                                           ICallbacks *pCallbacks);
+
+    Window &operator=(const Window &) = delete;
+
+    Window &operator=(Window &&) noexcept;
+
     ~Window();
 
    private:

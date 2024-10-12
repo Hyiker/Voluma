@@ -18,7 +18,9 @@ class SampleApp : public Window::ICallbacks, public gfx::IDebugCallback {
 
     void createFramebuffers();
 
-    void initShader(gfx::IShaderProgram **pShader);
+    Slang::ComPtr<gfx::IShaderProgram> createRasterizeShader();
+
+    Slang::ComPtr<gfx::IShaderProgram> createComputeShader();
 
     void beginLoop();
 
