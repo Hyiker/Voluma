@@ -5,8 +5,10 @@
 #include <cstdint>
 #include <vector>
 
+#include "Texture.h"
 #include "Window.h"
 #include "slang-com-ptr.h"
+
 
 namespace Voluma {
 class SampleApp : public Window::ICallbacks, public gfx::IDebugCallback {
@@ -18,7 +20,9 @@ class SampleApp : public Window::ICallbacks, public gfx::IDebugCallback {
 
     void createFramebuffers();
 
-    Slang::ComPtr<gfx::IShaderProgram> createRasterizeShader();
+    void createComputeTexture();
+
+    Slang::ComPtr<gfx::IShaderProgram> createGraphicsShader();
 
     Slang::ComPtr<gfx::IShaderProgram> createComputeShader();
 
@@ -26,10 +30,11 @@ class SampleApp : public Window::ICallbacks, public gfx::IDebugCallback {
 
     virtual void handleWindowSizeChange() override {}
     virtual void handleRenderFrame() override;
-    virtual void handleKeyboardEvent(const KeyboardEvent &keyEvent) override {}
+    virtual void handleKeyboardEvent(const KeyboardEvent &keyEvent) override;
     virtual void handleMouseEvent(const MouseEvent &mouseEvent) override {}
     virtual void handleDroppedFile(const std::filesystem::path &path) override {
     }
+
     virtual SLANG_NO_THROW void SLANG_MCALL
     handleMessage(gfx::DebugMessageType type, gfx::DebugMessageSource source,
                   const char *message) override;
@@ -54,7 +59,10 @@ class SampleApp : public Window::ICallbacks, public gfx::IDebugCallback {
     std::vector<Slang::ComPtr<gfx::ITransientResourceHeap>> mTransientHeaps;
     Slang::ComPtr<gfx::IRenderPassLayout> mRenderPass;
 
-    Slang::ComPtr<gfx::IBufferResource> mVertexBuffer; ///<
-    Slang::ComPtr<gfx::IPipelineState> mPipelineState; ///<
+    Slang::ComPtr<gfx::IBufferResource> mVertexBuffer;        ///<
+    Slang::ComPtr<gfx::IPipelineState> mPresentPipelineState; ///<
+
+    Texture mComputeTexture;
+    Slang::ComPtr<gfx::IPipelineState> mComputePipelineState; ///<
 };
 } // namespace Voluma
