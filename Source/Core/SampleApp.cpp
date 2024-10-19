@@ -7,9 +7,12 @@
 
 #include <cstring>
 
+#include "Core/Camera.h"
 #include "Core/Math.h"
+#include "Core/Program/Program.h"
 #include "Core/Program/ShaderVar.h"
 #include "Core/Window.h"
+#include "Data/VolData.h"
 #include "Error.h"
 #include "Utils/Logger.h"
 #include "Utils/UiInputs.h"
@@ -29,15 +32,17 @@ static const Vertex kVertexData[kVertexCount] = {
 };
 
 SampleApp::SampleApp() {
-    gfxEnableDebugLayer();
-    gfxSetDebugCallback(this);
     // Create device
-    IDevice::Desc deviceDesc = {};
-    gfxCreateDevice(&deviceDesc, mDevice.writeRef());
+    mpDevice = std::make_shared<Device>();
+
+    mpProgramManager = std::make_shared<ProgramManager>(mpDevice);
+
+    auto gfxDevice = mpDevice->gfxDevice;
 
     // Create command queue
-    ICommandQueue::Desc queueDesc = {ICommandQueue::QueueType::Graphics};
-    mDevice->createCommandQueue(queueDesc, mQueue.writeRef());
+    ICommandQueue::Desc queueDesc;
+    queueDesc.type = ICommandQueue::QueueType::Graphics;
+    mQueue = gfxDevice->createCommandQueue(queueDesc);
 
     // Create framebuffer layout
     IFramebufferLayout::TargetLayout renderTargetLayout = {
@@ -47,8 +52,8 @@ SampleApp::SampleApp() {
     framebufferLayoutDesc.renderTargetCount = 1;
     framebufferLayoutDesc.renderTargets = &renderTargetLayout;
     framebufferLayoutDesc.depthStencil = &depthLayout;
-    mDevice->createFramebufferLayout(framebufferLayoutDesc,
-                                     mFramebufferLayout.writeRef());
+    gfxDevice->createFramebufferLayout(framebufferLayoutDesc,
+                                       mFramebufferLayout.writeRef());
 
     // Create window
     Window::Desc windowDesc;
@@ -60,7 +65,7 @@ SampleApp::SampleApp() {
     swapchainDesc.height = windowDesc.height;
     swapchainDesc.imageCount = kSwapChainImageCount;
     swapchainDesc.queue = mQueue;
-    mSwapchain = mDevice->createSwapchain(
+    mSwapchain = gfxDevice->createSwapchain(
         swapchainDesc,
 #if VL_WINDOWS
         gfx::WindowHandle::FromHwnd(mpWindow->getNativeHandle())
@@ -74,10 +79,16 @@ SampleApp::SampleApp() {
     // Create resource heap
     for (int i = 0; i < kSwapChainImageCount; i++) {
         ITransientResourceHeap::Desc transientHeapDesc = {};
-        transientHeapDesc.constantBufferSize = 4096 * 1024;
+        transientHeapDesc.constantBufferSize = 16 * 1024 * 1024;
+        transientHeapDesc.flags =
+            gfx::ITransientResourceHeap::Flags::AllowResizing;
 
-        auto transientHeap =
-            mDevice->createTransientResourceHeap(transientHeapDesc);
+        gfx::ComPtr<ITransientResourceHeap> transientHeap;
+
+        if (SLANG_FAILED(gfxDevice->createTransientResourceHeap(
+                transientHeapDesc, transientHeap.writeRef()))) {
+            logError("Failed to create transient resource heap");
+        }
         mTransientHeaps.push_back(transientHeap);
     }
 
@@ -98,15 +109,15 @@ SampleApp::SampleApp() {
     depthStencilAccess.finalState = ResourceState::DepthWrite;
     renderPassDesc.renderTargetAccess = &renderTargetAccess;
     renderPassDesc.depthStencilAccess = &depthStencilAccess;
-    mRenderPass = mDevice->createRenderPassLayout(renderPassDesc);
+    mRenderPass = gfxDevice->createRenderPassLayout(renderPassDesc);
 
     // First, we create an input layout:
     //
     InputElementDesc inputElements[] = {
-        {"POSITION", 0, Format::R32G32_FLOAT, offsetof(Vertex, position)},
+        {"POSITION", 0, Format::R32G32_FLOAT, offsetof(Vertex, position), 0},
     };
     auto inputLayout =
-        mDevice->createInputLayout(sizeof(Vertex), &inputElements[0], 1);
+        gfxDevice->createInputLayout(sizeof(Vertex), &inputElements[0], 1);
     VL_ASSERT(inputLayout != nullptr);
 
     // Next we allocate a vertex buffer for our pre-initialized
@@ -117,30 +128,34 @@ SampleApp::SampleApp() {
     vertexBufferDesc.sizeInBytes = kVertexCount * sizeof(Vertex);
     vertexBufferDesc.defaultState = ResourceState::VertexBuffer;
     mVertexBuffer =
-        mDevice->createBufferResource(vertexBufferDesc, &kVertexData[0]);
+        gfxDevice->createBufferResource(vertexBufferDesc, &kVertexData[0]);
     VL_ASSERT(mVertexBuffer != nullptr);
 
     // Create present pipeline
     {
         Slang::ComPtr<gfx::IShaderProgram> graphicsProgram =
-            createGraphicsShader();
+            mpProgramManager->createProgram(
+                "Shaders/Present.raster.slang",
+                {{"vertexMain", ShaderType::Vertex},
+                 {"fragmentMain", ShaderType::Pixel}});
 
         GraphicsPipelineStateDesc desc;
         desc.inputLayout = inputLayout;
         desc.program = graphicsProgram;
         desc.framebufferLayout = mFramebufferLayout;
-        mPresentPipelineState = mDevice->createGraphicsPipelineState(desc);
+        mPresentPipelineState = gfxDevice->createGraphicsPipelineState(desc);
         VL_ASSERT(mPresentPipelineState != nullptr);
     }
 
     // Create compute pipeline
     {
         Slang::ComPtr<gfx::IShaderProgram> computeProgram =
-            createComputeShader();
+            mpProgramManager->createProgram("Shaders/RayMarching.cs.slang",
+                                            {{"main", ShaderType::Compute}});
 
         ComputePipelineStateDesc desc;
         desc.program = computeProgram;
-        mComputePipelineState = mDevice->createComputePipelineState(desc);
+        mComputePipelineState = gfxDevice->createComputePipelineState(desc);
         VL_ASSERT(mComputePipelineState != nullptr);
 
         createComputeTexture();
@@ -148,8 +163,8 @@ SampleApp::SampleApp() {
 }
 
 SampleApp::SampleApp(SampleApp&& other) noexcept
-    : mpWindow(other.mpWindow), mDevice(other.mDevice) {
-    other.mDevice = nullptr;
+    : mpWindow(other.mpWindow), mpDevice(other.mpDevice) {
+    other.mpDevice = nullptr;
 }
 
 void SampleApp::createFramebuffers() {
@@ -158,6 +173,8 @@ void SampleApp::createFramebuffers() {
     int height = mSwapchain->getDesc().height;
 
     auto colorFormat = mSwapchain->getDesc().format;
+
+    auto gfxDevice = mpDevice->gfxDevice;
     for (uint32_t i = 0; i < kSwapChainImageCount; i++) {
         // Depth texture
         gfx::ITextureResource::Desc depthBufferDesc;
@@ -172,7 +189,7 @@ void SampleApp::createFramebuffers() {
         ClearValue depthClearValue = {};
         depthBufferDesc.optimalClearValue = &depthClearValue;
         ComPtr<gfx::ITextureResource> depthBufferResource =
-            mDevice->createTextureResource(depthBufferDesc, nullptr);
+            gfxDevice->createTextureResource(depthBufferDesc, nullptr);
 
         gfx::IResourceView::Desc depthBufferViewDesc;
         memset(&depthBufferViewDesc, 0, sizeof(depthBufferViewDesc));
@@ -180,7 +197,7 @@ void SampleApp::createFramebuffers() {
         depthBufferViewDesc.renderTarget.shape =
             gfx::IResource::Type::Texture2D;
         depthBufferViewDesc.type = gfx::IResourceView::Type::DepthStencil;
-        ComPtr<gfx::IResourceView> dsv = mDevice->createTextureView(
+        ComPtr<gfx::IResourceView> dsv = gfxDevice->createTextureView(
             depthBufferResource.get(), depthBufferViewDesc);
 
         // Color texture
@@ -193,8 +210,8 @@ void SampleApp::createFramebuffers() {
         colorBufferViewDesc.renderTarget.shape =
             gfx::IResource::Type::Texture2D;
         colorBufferViewDesc.type = gfx::IResourceView::Type::RenderTarget;
-        ComPtr<gfx::IResourceView> rtv =
-            mDevice->createTextureView(colorBuffer.get(), colorBufferViewDesc);
+        ComPtr<gfx::IResourceView> rtv = gfxDevice->createTextureView(
+            colorBuffer.get(), colorBufferViewDesc);
 
         gfx::IFramebuffer::Desc framebufferDesc;
         framebufferDesc.renderTargetCount = 1;
@@ -202,13 +219,15 @@ void SampleApp::createFramebuffers() {
         framebufferDesc.renderTargetViews = rtv.readRef();
         framebufferDesc.layout = mFramebufferLayout;
         ComPtr<gfx::IFramebuffer> frameBuffer =
-            mDevice->createFramebuffer(framebufferDesc);
+            gfxDevice->createFramebuffer(framebufferDesc);
 
         mFramebuffers.push_back(frameBuffer);
     }
 }
 
 void SampleApp::createComputeTexture() {
+    auto gfxDevice = mpDevice->gfxDevice;
+
     int width = mSwapchain->getDesc().width;
     int height = mSwapchain->getDesc().height;
     ITextureResource::Desc resultTextureDesc = {};
@@ -218,104 +237,33 @@ void SampleApp::createComputeTexture() {
     resultTextureDesc.size.height = height;
     resultTextureDesc.size.depth = 1;
     resultTextureDesc.defaultState = ResourceState::UnorderedAccess;
-    resultTextureDesc.format = Format::R16G16B16A16_FLOAT;
-    auto resource = mDevice->createTextureResource(resultTextureDesc);
+    resultTextureDesc.format = Format::R32G32B32A32_FLOAT;
+    auto resource = gfxDevice->createTextureResource(resultTextureDesc);
     IResourceView::Desc resultUAVDesc = {};
     resultUAVDesc.format = resultTextureDesc.format;
     resultUAVDesc.type = IResourceView::Type::UnorderedAccess;
-    auto textureUAV = mDevice->createTextureView(resource, resultUAVDesc);
+    auto textureUAV = gfxDevice->createTextureView(resource, resultUAVDesc);
 
     mComputeTexture.resource = resource;
     mComputeTexture.view = textureUAV;
 }
 
-void diagnoseIfNeeded(slang::IBlob* diagnosticsBlob) {
-    if (diagnosticsBlob != nullptr) {
-        logError("{}", (const char*)diagnosticsBlob->getBufferPointer());
-    }
-}
+void SampleApp::createComputeBuffer() {
+    gfx::IBufferResource::Desc bufferDesc = {};
+    bufferDesc.allowedStates.add(ResourceState::ShaderResource);
+    bufferDesc.allowedStates.add(ResourceState::UnorderedAccess);
+    bufferDesc.allowedStates.add(ResourceState::CopyDestination);
+    bufferDesc.allowedStates.add(ResourceState::General);
+    bufferDesc.sizeInBytes = mpVolData->getSliceCount() *
+                             mpVolData->getColWidth() *
+                             mpVolData->getRowWidth() * sizeof(float);
+    bufferDesc.type = IResource::Type::Buffer;
+    mVolBuffer.resource = mpDevice->gfxDevice->createBufferResource(bufferDesc);
 
-Slang::ComPtr<gfx::IShaderProgram> SampleApp::createGraphicsShader() {
-    ComPtr<slang::ISession> slangSession;
-    slangSession = mDevice->getSlangSession();
-
-    ComPtr<slang::IBlob> diagnosticsBlob;
-    slang::IModule* module = slangSession->loadModule(
-        "present.raster.slang", diagnosticsBlob.writeRef());
-    diagnoseIfNeeded(diagnosticsBlob);
-    VL_ASSERT(module != nullptr);
-
-    ComPtr<slang::IEntryPoint> vertexEntryPoint;
-    module->findEntryPointByName("vertexMain", vertexEntryPoint.writeRef());
-
-    ComPtr<slang::IEntryPoint> fragmentEntryPoint;
-    module->findEntryPointByName("fragmentMain", fragmentEntryPoint.writeRef());
-
-    std::vector<slang::IComponentType*> componentTypes;
-    componentTypes.push_back(module);
-
-    int entryPointCount = 0;
-    int vertexEntryPointIndex = entryPointCount++;
-    componentTypes.push_back(vertexEntryPoint);
-
-    int fragmentEntryPointIndex = entryPointCount++;
-    componentTypes.push_back(fragmentEntryPoint);
-
-    ComPtr<slang::IComponentType> linkedProgram;
-    SlangResult result = slangSession->createCompositeComponentType(
-        componentTypes.data(), componentTypes.size(), linkedProgram.writeRef(),
-        diagnosticsBlob.writeRef());
-    diagnoseIfNeeded(diagnosticsBlob);
-
-    IShaderProgram::Desc programDesc = {};
-    programDesc.slangGlobalScope = linkedProgram;
-    return mDevice->createProgram(programDesc);
-}
-
-Slang::ComPtr<gfx::IShaderProgram> SampleApp::createComputeShader() {
-    ComPtr<slang::ISession> slangSession;
-    slangSession = mDevice->getSlangSession();
-
-    ComPtr<slang::IBlob> diagnosticsBlob;
-    slang::IModule* module =
-        slangSession->loadModule("viz.cs.slang", diagnosticsBlob.writeRef());
-    diagnoseIfNeeded(diagnosticsBlob);
-    VL_ASSERT(module != nullptr);
-
-    ComPtr<slang::IEntryPoint> computeEntryPoint;
-    module->findEntryPointByName("main", computeEntryPoint.writeRef());
-
-    std::vector<slang::IComponentType*> componentTypes{module,
-                                                       computeEntryPoint};
-
-    ComPtr<slang::IComponentType> linkedProgram;
-    slangSession->createCompositeComponentType(
-        componentTypes.data(), componentTypes.size(), linkedProgram.writeRef(),
-        diagnosticsBlob.writeRef());
-    diagnoseIfNeeded(diagnosticsBlob);
-
-    IShaderProgram::Desc programDesc = {};
-    programDesc.slangGlobalScope = linkedProgram;
-    return mDevice->createProgram(programDesc);
-}
-
-void SampleApp::handleMessage(DebugMessageType type, DebugMessageSource source,
-                              const char* message) {
-    std::string sourceStr = source == DebugMessageSource::Driver  ? "Driver"
-                            : source == DebugMessageSource::Layer ? "Layer"
-                                                                  : "Slang";
-    auto msg = fmt::format("[{}] {}", sourceStr, message);
-    switch (type) {
-        case gfx::DebugMessageType::Info:
-            logInfo(msg);
-            break;
-        case gfx::DebugMessageType::Warning:
-            logWarning(msg);
-            break;
-        case gfx::DebugMessageType::Error:
-            logError(msg);
-            break;
-    }
+    IResourceView::Desc desc = {};
+    desc.type = IResourceView::Type::UnorderedAccess;
+    mVolBuffer.view = mpDevice->gfxDevice->createBufferView(mVolBuffer.resource,
+                                                            nullptr, desc);
 }
 
 void SampleApp::handleRenderFrame() {
@@ -324,6 +272,9 @@ void SampleApp::handleRenderFrame() {
     mTransientHeaps[framebufferIndex]->synchronizeAndReset();
     executeRenderFrame(framebufferIndex);
     mTransientHeaps[framebufferIndex]->finish();
+}
+void SampleApp::handleMouseEvent(const MouseEvent& mouseEvent) {
+    mCamera.onMouseEvent(mouseEvent);
 }
 
 void SampleApp::handleKeyboardEvent(const KeyboardEvent& keyEvent) {
@@ -339,31 +290,67 @@ void SampleApp::handleKeyboardEvent(const KeyboardEvent& keyEvent) {
     }
 }
 
+void SampleApp::loadFromDisk(const std::string& filename) {
+    mpVolData = VolData::loadFromDisk(filename);
+
+    logInfo("Slice count: {}", mpVolData->getSliceCount());
+    logInfo("patient info: {}", mpVolData->getPatientData());
+    logInfo("scan meta: {}", mpVolData->getScanMetaData());
+
+    createComputeBuffer();
+}
+
 void SampleApp::beginLoop() { mpWindow->msgLoop(); }
 
 void SampleApp::executeRenderFrame(int framebufferIndex) {
+    auto gfxDevice = mpDevice->gfxDevice;
+
     int width = mSwapchain->getDesc().width;
     int height = mSwapchain->getDesc().height;
-    {
-        ComPtr<ICommandBuffer> commandBuffer =
+    static bool isBufferCopied = false;
+    if (!isBufferCopied) {
+        ComPtr<ICommandBuffer> resourceCommandBuffer =
             mTransientHeaps[framebufferIndex]->createCommandBuffer();
-        auto renderEncoder = commandBuffer->encodeComputeCommands();
+        auto resourceEncoder = resourceCommandBuffer->encodeResourceCommands();
+
+        resourceEncoder->bufferBarrier(mVolBuffer.resource,
+                                       ResourceState::Undefined,
+                                       ResourceState::CopyDestination);
+        resourceEncoder->uploadBufferData(
+            mVolBuffer.resource, 0, mpVolData->getBufferData().size(),
+            (void*)mpVolData->getBufferData().data());
+        resourceEncoder->endEncoding();
+        resourceCommandBuffer->close();
+        mQueue->executeCommandBuffer(resourceCommandBuffer);
+        isBufferCopied = true;
+    }
+
+    {
+        ComPtr<ICommandBuffer> computeCommandBuffer =
+            mTransientHeaps[framebufferIndex]->createCommandBuffer();
+        auto renderEncoder = computeCommandBuffer->encodeComputeCommands();
 
         auto rootObject = renderEncoder->bindPipeline(mComputePipelineState);
 
-        auto deviceInfo = mDevice->getDeviceInfo();
+        renderEncoder->bufferBarrier(mVolBuffer.resource,
+                                     ResourceState::CopyDestination,
+                                     ResourceState::UnorderedAccess);
 
-        // ShaderVar rootVar(rootObject);
-        // float4x4 proj;
-        // std::memcpy(&proj, deviceInfo.identityProjectionMatrix,
-        //             sizeof(float) * 16);
-        // proj *= 0.01f;
-        // rootVar["Uniforms"]["modelViewProjection"] = proj;
+        auto deviceInfo = gfxDevice->getDeviceInfo();
 
-        renderEncoder->dispatchCompute(width, height, 1);
+        ShaderVar rootVar(rootObject);
+        mCamera.bindShaderData(rootVar);
+        rootVar["frameDim"] = uint2(width, height);
+        rootVar["dstTex"] = mComputeTexture;
+        rootVar["volBuffer"] = mVolBuffer;
+
+        if (SLANG_FAILED(
+                renderEncoder->dispatchCompute(width / 16, height / 16, 1))) {
+            logError("dispatchCompute failed");
+        }
         renderEncoder->endEncoding();
-        commandBuffer->close();
-        mQueue->executeCommandBuffer(commandBuffer);
+        computeCommandBuffer->close();
+        mQueue->executeCommandBuffer(computeCommandBuffer);
     }
 
     {
@@ -380,14 +367,10 @@ void SampleApp::executeRenderFrame(int framebufferIndex) {
 
         auto rootObject = renderEncoder->bindPipeline(mPresentPipelineState);
 
-        auto deviceInfo = mDevice->getDeviceInfo();
+        auto deviceInfo = gfxDevice->getDeviceInfo();
 
         ShaderVar rootVar(rootObject);
-        float4x4 proj;
-        std::memcpy(&proj, deviceInfo.identityProjectionMatrix,
-                    sizeof(float) * 16);
-        proj *= 0.01f;
-        rootVar["Uniforms"]["modelViewProjection"] = proj;
+        rootVar["srcTex"] = mComputeTexture;
 
         // We also need to set up a few pieces of fixed-function pipeline
         // state that are not bound by the pipeline state above.

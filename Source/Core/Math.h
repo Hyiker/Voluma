@@ -1,5 +1,6 @@
 #pragma once
 #include "Macros.h"
+#include "glm/ext/vector_uint2.hpp"
 #include <algorithm>
 
 #include <glm/vec2.hpp>
@@ -18,6 +19,10 @@
 #include <glm/vector_relational.hpp>
 
 namespace Voluma {
+
+using uint2 = glm::uvec2;
+using uint3 = glm::uvec3;
+using uint4 = glm::uvec4;
 
 using float2 = glm::vec2;
 using float3 = glm::vec3;

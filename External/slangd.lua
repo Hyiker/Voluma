@@ -52,12 +52,15 @@ rule("slang")
         -- make sure build directory exists
         os.mkdir(target:targetdir())
 
-        -- replace .md with .html
-        local targetfile = path.join(target:targetdir(), path.filename(sourcefile))
+        -- Preserve shader directory structure
+        local sourcefile_rel = path.relative(sourcefile, "Source")
+        local sourcefile_dir = path.directory(sourcefile_rel)
+        
+        local targetfile = path.join(target:targetdir(), sourcefile_rel)
 
         -- only rebuild the file if its changed since last run
         depend.on_changed(function ()
-            -- call pandoc to make a standalone html file from a markdown file
+            os.mkdir(path.join(target:targetdir(), sourcefile_dir))
             os.trycp(sourcefile, targetfile)
             progress.show(opt.progress, "${color.build.object}slang %s", sourcefile)
         end, {files = sourcefile})

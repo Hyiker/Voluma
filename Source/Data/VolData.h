@@ -1,4 +1,4 @@
-
+#pragma once
 #include <dcmtk/dcmdata/dcfilefo.h>
 #include <dcmtk/dcmdata/dctk.h>
 #include <fmt/core.h>
@@ -18,11 +18,11 @@ namespace Voluma {
 class VL_API VolData {
    public:
     struct ScanMeta {
-        uint32_t rowCount, colCount;  ///< Image size
+        uint32_t rowCount, colCount; ///< Image size
 
         // Pixel metadata
         float pixelSpaceV,
-            pixelSpaceH;  ///< Vertical and Horizontal pixel spacing
+            pixelSpaceH; ///< Vertical and Horizontal pixel spacing
 
         // Rescale
         float rescaleIntercept;
@@ -49,6 +49,10 @@ class VL_API VolData {
 
     auto getColWidth() const { return mMetaData.colCount; }
 
+    uint32_t getVolumeSize() const {
+        return getRowWidth() * getColWidth() * getSliceCount();
+    }
+
     /** Save slice image to disk.
      */
     void saveSlice(const std::filesystem::path& filename, int index) const;
@@ -61,17 +65,21 @@ class VL_API VolData {
     bool verify(const DcmParser& parser) const;
     void addSlice(VolSlice&& slice);
 
+    const std::vector<float> getBufferData() const { return mBufferData; }
+
     void finalize();
 
    private:
     // File metadata
-    PatientData mPatientData;  ///< Patient data
-    ScanMeta mMetaData;        ///< Scanning metadata
+    PatientData mPatientData; ///< Patient data
+    ScanMeta mMetaData;       ///< Scanning metadata
 
     // CT Slices
     std::vector<VolSlice> mVolumeSliceData;
+
+    std::vector<float> mBufferData;
 };
 
-}  // namespace Voluma
+} // namespace Voluma
 
 VL_FMT(Voluma::VolData::ScanMeta)

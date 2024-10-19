@@ -3,7 +3,9 @@
 
 #include <string_view>
 
+#include "Core/Buffer.h"
 #include "Core/Macros.h"
+#include "Core/Texture.h"
 namespace Voluma {
 class VL_API ShaderVar {
    public:
@@ -32,11 +34,15 @@ class VL_API ShaderVar {
     bool isValid() const { return mpShader != nullptr; }
 
    private:
+    void setImpl(const Texture& texture) const;
+
+    void setImpl(const Buffer& buffer) const;
+
     template <typename T>
     void setImpl(const T& val) const;
 
     gfx::IShaderObject* mpShader;
-    slang::TypeLayoutReflection* mTypeLayout = nullptr;
+    slang::TypeLayoutReflection* mpTypeLayout = nullptr;
 
     gfx::ShaderOffset mOffset;
 };
@@ -45,4 +51,5 @@ template <typename T>
 void ShaderVar::setImpl(const T& val) const {
     setBlob(val);
 }
+
 } // namespace Voluma

@@ -12,7 +12,9 @@ vl_target("Voluma")
         "Data/**.cpp",
         "Voluma.cpp",
 
-        "Shaders/*.slang"
+        "Core/*.slang",
+        "Shaders/*.slang",
+        "Utils/*.slangh"
     )
     -- Include directory
     add_includedirs(".")

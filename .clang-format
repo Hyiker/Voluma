@@ -179,5 +179,37 @@ WhitespaceSensitiveMacros:
   - STRINGIZE
   - PP_STRINGIZE
   - BOOST_PP_STRINGIZE
+
 ---
+
+# Slang formatting
+
+Language: CSharp
+BasedOnStyle: Chromium
+IndentWidth: 4
+ColumnLimit: 140
+AccessModifierOffset: -4
+SortIncludes: false
+SortUsingDeclarations: false
+SpaceAfterTemplateKeyword: false
+DerivePointerAlignment: false
+PointerAlignment: Left
+FixNamespaceComments: true
+
+BinPackArguments: false
+AllowAllConstructorInitializersOnNextLine: true
+BreakConstructorInitializers: BeforeComma
+AlwaysBreakTemplateDeclarations: true
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortEnumsOnASingleLine: true
+IndentCaseLabels: false
+
+ReflowComments: true
+CommentPragmas: '^\\.+'
+SpacesBeforeTrailingComments: 1
+PenaltyBreakComment: 0
+AlignAfterOpenBracket: BlockIndent
+IndentPPDirectives: None
+PenaltyReturnTypeOnItsOwnLine: 100000
+PenaltyBreakTemplateDeclaration: 100000
 

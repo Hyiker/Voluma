@@ -13,12 +13,8 @@ int main(int argc, const char **argv) {
     Logger::init(Logger::LoggerConfig());
 
     SampleApp app;
+    app.loadFromDisk(argv[1]);
     app.beginLoop();
-    //   auto dcmData = VolData::loadFromDisk(argv[1]);
-    //   logInfo("Slice count: {}", dcmData->getSliceCount());
-    //   logInfo("patient info: {}", dcmData->getPatientData());
-    //   logInfo("scan meta: {}", dcmData->getScanMetaData());
-    //   dcmData->saveSlice("output.exr", 0);
 
     return 0;
 }

@@ -5,7 +5,12 @@
 #include <dcmtk/dcmimgle/dipixel.h>
 #include <dcmtk/dcmimgle/diutils.h>
 
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <execution>
 #include <filesystem>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -35,37 +40,47 @@ std::string ScanMeta::toString() const {
 std::shared_ptr<VolData> VolData::loadFromDisk(
     const std::filesystem::path& folder) {
     auto pVolData = std::make_shared<VolData>();
-    bool isFirst = true;
 
+    std::vector<std::string> filePaths;
     for (const auto& entry : std::filesystem::directory_iterator(folder)) {
         auto fn = entry.path();
         if (entry.is_regular_file() && fn.extension() == ".dcm") {
-            DcmFileFormat dfile;
-            OFCondition result = dfile.loadFile(fn.string().c_str());
-
-            if (result.bad())
-                logError("Failed to load slice file {}.", fn.string());
-
-            auto* pDataset = dfile.getDataset();
-            DcmParser parser(pDataset);
-
-            if (isFirst) {
-                // Read meta data from the first .dcm file
-                pVolData->mPatientData = pVolData->loadPatientData(parser);
-                pVolData->mMetaData = pVolData->loadScanMeta(parser);
-            } else {
-                // Otherwise, verify the metadata and patient data
-                if (!pVolData->verify(parser))
-                    logError(
-                        "Slice file {} has divergent meta data with previous "
-                        "ones.",
-                        fn.string());
-            }
-
-            pVolData->addSlice(VolSlice(parser));
-            isFirst = false;
+            filePaths.push_back((folder / fn.filename()).string());
         }
     }
+
+    std::mutex addSliceMutex;
+
+    auto loadDcmData = [&](const std::string& fn, bool isFirst = false) {
+        DcmFileFormat dfile;
+        OFCondition result = dfile.loadFile(fn.c_str());
+
+        if (result.bad()) logError("Failed to load slice file {}.", fn);
+
+        auto* pDataset = dfile.getDataset();
+        DcmParser parser(pDataset);
+
+        if (isFirst) {
+            // Read meta data from the first .dcm file
+            pVolData->mPatientData = pVolData->loadPatientData(parser);
+            pVolData->mMetaData = pVolData->loadScanMeta(parser);
+        } else {
+            // Otherwise, verify the metadata and patient data
+            if (!pVolData->verify(parser))
+                logError(
+                    "Slice file {} has divergent meta data with previous "
+                    "ones.",
+                    fn);
+        }
+        {
+            std::unique_lock<std::mutex> lck(addSliceMutex);
+            pVolData->addSlice(VolSlice(parser));
+        }
+    };
+
+    loadDcmData(filePaths[0], true);
+    std::for_each(std::execution::par_unseq, filePaths.begin() + 1,
+                  filePaths.end(), loadDcmData);
 
     pVolData->finalize();
 
@@ -160,6 +175,14 @@ void VolData::finalize() {
               [](const VolSlice& s1, const VolSlice& s2) {
                   return s1.mLocation <= s2.mLocation;
               });
+
+    mBufferData.reserve(getVolumeSize());
+
+    for (const auto& slice : mVolumeSliceData) {
+        std::transform(slice.mRawData.begin(), slice.mRawData.end(),
+                       std::back_inserter(mBufferData),
+                       [](uint16_t v) { return float(v); });
+    }
 }
 
 } // namespace Voluma
