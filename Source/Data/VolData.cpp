@@ -182,8 +182,12 @@ void VolData::finalize() {
         std::transform(slice.mRawData.begin(), slice.mRawData.end(),
                        std::back_inserter(mBufferData),
                        [](uint16_t v) { return float(v); });
+
+        mMinValue = std::min(slice.mMinPixelValue, mMinValue);
+        mMaxValue = std::max(slice.mMaxPixelValue, mMaxValue);
     }
 
+    logInfo("Min val: {}, max val: {}", mMinValue, mMaxValue);
     if (mBufferData.size() != getVolumeSize()) {
         logError("Bad buffer data size!");
     }

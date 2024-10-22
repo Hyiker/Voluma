@@ -17,8 +17,8 @@ OrbitController::OrbitController(Camera* pCamera) : mpCamera(pCamera) {
 }
 
 float2 convertCamPosRange(const float2 pos) {
-    const float2 scale(-2, 2);
-    const float2 offset(1, -1);
+    const float2 scale(-2, -2);
+    const float2 offset(1, 1);
     float2 res = (pos * scale) + offset;
     return res;
 }

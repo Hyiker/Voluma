@@ -69,10 +69,16 @@ class VL_API VolData {
 
     void finalize();
 
+    auto getMinValue() { return mMinValue; }
+    auto getMaxValue() { return mMaxValue; }
+
    private:
     // File metadata
     PatientData mPatientData; ///< Patient data
     ScanMeta mMetaData;       ///< Scanning metadata
+
+    uint16_t mMaxValue = 0;
+    uint16_t mMinValue = std::numeric_limits<uint16_t>::max();
 
     // CT Slices
     std::vector<VolSlice> mVolumeSliceData;

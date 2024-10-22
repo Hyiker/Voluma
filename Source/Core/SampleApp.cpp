@@ -327,7 +327,8 @@ void SampleApp::renderUI() {
     mpGui->beginFrame();
     ImGui::Begin("Dashboard");
 
-    ImGui::SliderInt("Volume filter", &mParams.filterValue, 0, 2000);
+    ImGui::SliderInt("Volume filter", &mParams.filterValue,
+                     mpVolData->getMinValue(), mpVolData->getMaxValue());
 
     static const char* kShadingItems[] = {
         Voluma::enumToString(ShadingMode::Normal).c_str(),

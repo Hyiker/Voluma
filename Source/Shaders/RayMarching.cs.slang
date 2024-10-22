@@ -53,6 +53,50 @@ struct VolData {
 
         return value;
     }
+
+    float3 computeGradient(float3 texLoc) {
+        float epsilon = 1.0f / volData.volDim.x * 0.1f;
+
+        float sampleX1 = volData.getVolData(texLoc + float3(epsilon, 0, 0));
+        float sampleX2 = volData.getVolData(texLoc - float3(epsilon, 0, 0));
+        float sampleY1 = volData.getVolData(texLoc + float3(0, epsilon, 0));
+        float sampleY2 = volData.getVolData(texLoc - float3(0, epsilon, 0));
+        float sampleZ1 = volData.getVolData(texLoc + float3(0, 0, epsilon));
+        float sampleZ2 = volData.getVolData(texLoc - float3(0, 0, epsilon));
+
+        float3 gradient;
+        gradient.x = (sampleX1 - sampleX2) * 0.5f;
+        gradient.y = (sampleY1 - sampleY2) * 0.5f;
+        gradient.z = (sampleZ1 - sampleZ2) * 0.5f;
+
+        return gradient;
+    }
+    float3 computeNormal(float3 texLoc) { return -normalize(computeGradient(texLoc)); }
+
+    float3 worldPositionToTexCoord(const float3 posW) {
+        // volume texture: (1.0 x 1.0 x 1.0)
+        //         ^ z
+        //         |
+        //  x<-----
+        //          \ 
+        //           \ y
+
+        float3 bounds = volData.getNormalizedVolBounds();
+        float3 boundsHalf = bounds * 0.5;
+
+        float3 texLoc = posW.xzy;
+        texLoc = texLoc + boundsHalf;
+        texLoc /= boundsHalf * 2.f;
+        return texLoc * float3(volData.volDim);
+    }
+
+    bool isInside(float3 posW) {
+        float3 bounds = volData.getNormalizedVolBounds();
+        float3 boundsHalf = bounds * 0.5;
+        if (any(posW < -boundsHalf) || any(posW > boundsHalf))
+            return false;
+        return true;
+    }
 };
 
 struct ShadingData {
@@ -85,26 +129,10 @@ void computeCameraRayOrtho(float2 posScreen, float2 frameDim, out Ray ray) {
     ray.origin = cameraData.posW + (ndc.x * cameraData.cameraU + ndc.y * cameraData.cameraV) * 0.006;
 }
 
-float3 worldPositionToTexCoord(const float3 posW, const float3 boundsHalf) {
-    // volume texture: (1.0 x 1.0 x 1.0)
-    //         ^ z
-    //         |
-    //  x<-----
-    //          \ 
-    //           \ y
-
-    float3 texLoc = posW.xzy;
-    texLoc = texLoc + boundsHalf;
-    texLoc /= boundsHalf * 2.f;
-    return texLoc * float3(volData.volDim);
-}
-
 bool rayMarchStep(float3 posW, out float value, out float3 texLoc) {
-    float3 bounds = volData.getNormalizedVolBounds();
-    float3 boundsHalf = bounds * 0.5;
-    if (any(posW < -boundsHalf) || any(posW > boundsHalf))
+    if (!volData.isInside(posW))
         return false;
-    texLoc = worldPositionToTexCoord(posW, boundsHalf);
+    texLoc = volData.worldPositionToTexCoord(posW);
     float density = volData.getVolData(texLoc);
 
     value = density;
@@ -119,52 +147,28 @@ bool transportFunc(float value, out float3 color) {
     return true;
 }
 
-float3 computeNormal(float3 texLoc) {
-    float epsilon = 1.0f / volData.volDim.x;
-
-    float sampleX1 = volData.getVolData(texLoc + float3(epsilon, 0, 0));
-    float sampleX2 = volData.getVolData(texLoc - float3(epsilon, 0, 0));
-    float sampleY1 = volData.getVolData(texLoc + float3(0, epsilon, 0));
-    float sampleY2 = volData.getVolData(texLoc - float3(0, epsilon, 0));
-    float sampleZ1 = volData.getVolData(texLoc + float3(0, 0, epsilon));
-    float sampleZ2 = volData.getVolData(texLoc - float3(0, 0, epsilon));
-
-    float3 gradient;
-    gradient.x = (sampleX1 - sampleX2) * 0.5f;
-    gradient.y = (sampleY1 - sampleY2) * 0.5f;
-    gradient.z = (sampleZ1 - sampleZ2) * 0.5f;
-
-    float3 normal = -normalize(gradient);
-
-    return normal;
-}
-
 bool rayMarch(const Ray ray, out ShadingData sd) {
-    float stepSize = 0.01;
-    const int steps = 1000;
-    float3 p = ray.origin;
+    const int kMaxSteps = 2000;
+    const float kInitialStep = 1.5f / kMaxSteps;
+    const float kBigStep = 0.5f;
+    float stepSize = kInitialStep;
+
+    float3 p = ray.origin + ray.dir * 1.f;
     float3 accumulateColor = float3(0.0);
     float3 stepColor = float3(0.0);
     float3 texLoc;
     float stepValue;
 
-    uint hitCount = 0;
-    const uint kMaxHitCount = 5;
-
-    for (int i = 0; i < steps; i++) {
+    for (int i = 0; i < kMaxSteps; i++) {
+        float gradientNorm = length(volData.computeGradient(texLoc));
         if (rayMarchStep(p, stepValue, texLoc)) {
             // bisec ray marching
             if (transportFunc(stepValue, stepColor)) {
-                p -= stepSize * ray.dir;
-                stepSize *= 0.5f;
-                hitCount++;
-                if (hitCount >= kMaxHitCount) {
-                    accumulateColor = stepColor;
-                    sd.density = stepValue;
-                    sd.posW = p;
-                    sd.normW = computeNormal(texLoc);
-                    return true;
-                }
+                accumulateColor = stepColor;
+                sd.density = stepValue;
+                sd.posW = p;
+                sd.normW = volData.computeNormal(texLoc);
+                return true;
             }
         }
         p += stepSize * ray.dir;
@@ -172,15 +176,16 @@ bool rayMarch(const Ray ray, out ShadingData sd) {
     return false;
 }
 
-float3 phongShade(const ShadingData sd) {
-    float3 toLight = cameraData.posW - sd.posW;
+float3 phongShading(const ShadingData sd) {
+    float3 toLight = float3(0.0, 0.0, -3.0) - cameraData.target;
     float3 L = normalize(toLight);
 
-    float3 ambient = 0.2f;
+    float3 ambient = 0.6f;
     float3 diffuse = 0.4f * 1.f * max(0, dot(sd.normW, L));
-    float3 specular = 0.3f * 1.f * max(0, dot(reflect(-L, sd.normW), L));
+    // Remove specular here to make it look smoother
+    // float3 specular = 0.5f * 1.f * pow(max(0, dot(reflect(-L, sd.normW), L)), 5.f);
 
-    return ambient + diffuse + specular;
+    return ambient + diffuse;
 }
 
 void execute(uint2 pixel) {
@@ -192,7 +197,7 @@ void execute(uint2 pixel) {
         float3 shadingColor;
         switch (params.shadingMode) {
         case ShadingMode::FlatShade:
-            shadingColor = phongShade(sd);
+            shadingColor = phongShading(sd);
             break;
         case ShadingMode::Normal:
             shadingColor = sd.normW * 0.5 + 0.5;
