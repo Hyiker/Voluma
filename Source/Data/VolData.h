@@ -65,7 +65,7 @@ class VL_API VolData {
     bool verify(const DcmParser& parser) const;
     void addSlice(VolSlice&& slice);
 
-    const std::vector<float> getBufferData() const { return mBufferData; }
+    const std::vector<float>& getBufferData() const { return mBufferData; }
 
     void finalize();
 

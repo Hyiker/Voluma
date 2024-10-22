@@ -33,6 +33,7 @@ using ProgramEntryPoint = std::pair<std::string, ShaderType>;
 
 class VL_API ProgramManager {
    public:
+    using SharedPtr = std::shared_ptr<ProgramManager>;
     ProgramManager(std::shared_ptr<Device> device);
     Slang::ComPtr<gfx::IShaderProgram> createProgram(
         std::string_view filePath,

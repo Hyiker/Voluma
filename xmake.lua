@@ -26,11 +26,6 @@ add_requires("tinyexr v1.0.9")
 add_requires("glfw 3.4", {
     configs = {glfw_include = "system"}})
 add_requires("imgui v1.91.1")
-if is_plat("windows") then 
-add_requireconfs("imgui",  {configs = {dx12 = true, glfw = true}})
-else 
-add_requireconfs("imgui",  {configs = {glfw = true}})
-end
 add_requires("slangd 2024.13")
 add_requires("glm 1.0.1", {
     configs = {header_only = false, cxx_standard = "20"}})

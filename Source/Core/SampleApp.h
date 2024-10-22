@@ -11,10 +11,13 @@
 #include "Core/Program/Program.h"
 #include "Data/VolData.h"
 #include "Device.h"
+#include "SampleAppShared.slangh"
 #include "Texture.h"
 #include "Window.h"
 
+
 namespace Voluma {
+class Gui;
 class SampleApp : public Window::ICallbacks {
    public:
     SampleApp();
@@ -24,9 +27,9 @@ class SampleApp : public Window::ICallbacks {
 
     void createFramebuffers();
 
-    void createComputeTexture();
+    void createPresentTexture();
 
-    void createComputeBuffer();
+    void createVolDataTexture();
 
     Slang::ComPtr<gfx::IShaderProgram> createGraphicsShader();
 
@@ -35,6 +38,8 @@ class SampleApp : public Window::ICallbacks {
     void loadFromDisk(const std::string &filename);
 
     void beginLoop();
+
+    void renderUI();
 
     virtual void handleWindowSizeChange() override {}
     virtual void handleRenderFrame() override;
@@ -56,8 +61,9 @@ class SampleApp : public Window::ICallbacks {
     Camera mCamera;
 
     std::shared_ptr<Window> mpWindow;
+    std::shared_ptr<Gui> mpGui;
 
-    std::shared_ptr<Device> mpDevice; ///< GPU device.
+    Device::SharedPtr mpDevice; ///< GPU device.
     Slang::ComPtr<gfx::ISwapchain> mSwapchain;
     Slang::ComPtr<gfx::ICommandQueue> mQueue; ///< Command queue.
     Slang::ComPtr<gfx::IFramebufferLayout> mFramebufferLayout;
@@ -70,10 +76,11 @@ class SampleApp : public Window::ICallbacks {
     Slang::ComPtr<gfx::IBufferResource> mVertexBuffer;        ///<
     Slang::ComPtr<gfx::IPipelineState> mPresentPipelineState; ///<
 
-    Texture mComputeTexture;
-    Buffer mVolBuffer;
+    Texture::SharedPtr mpPresentTexture;
+    Texture::SharedPtr mpVolDataTexture;
     Slang::ComPtr<gfx::IPipelineState> mComputePipelineState; ///<
 
     std::shared_ptr<VolData> mpVolData;
+    SampleAppParam mParams;
 };
 } // namespace Voluma

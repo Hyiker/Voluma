@@ -13,6 +13,7 @@ vl_target("Voluma")
         "Voluma.cpp",
 
         "Core/*.slang",
+        "Core/*.slangh",
         "Shaders/*.slang",
         "Utils/*.slangh"
     )

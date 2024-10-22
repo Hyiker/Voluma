@@ -1,10 +1,4 @@
-
 Texture2D<float4> srcTex;
-
-// Uniform data to be passed from application -> shader.
-cbuffer Uniforms {
-    float4x4 modelViewProjection;
-}
 
 [shader("vertex")]
 float4 vertexMain(float2 position: POSITION) : SV_Position {

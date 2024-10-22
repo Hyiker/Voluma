@@ -183,6 +183,11 @@ void VolData::finalize() {
                        std::back_inserter(mBufferData),
                        [](uint16_t v) { return float(v); });
     }
+
+    if (mBufferData.size() != getVolumeSize()) {
+        logError("Bad buffer data size!");
+    }
+    mBufferData.shrink_to_fit();
 }
 
 } // namespace Voluma

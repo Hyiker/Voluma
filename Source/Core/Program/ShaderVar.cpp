@@ -92,16 +92,21 @@ ShaderVar ShaderVar::operator[](size_t index) const {
 }
 
 void ShaderVar::setBlob(void const* data, size_t size) const {
-    if(!SLANG_SUCCEEDED(mpShader->setData(mOffset, data, size))){
+    if (!SLANG_SUCCEEDED(mpShader->setData(mOffset, data, size))) {
         logError("ShaderVar: Error setBlob");
     }
 }
 
 void ShaderVar::setImpl(const Texture& texture) const {
-    mpShader->setResource(mOffset, texture.view);
+    mpShader->setResource(mOffset, texture.getView());
 }
 
 void ShaderVar::setImpl(const Buffer& buffer) const {
     mpShader->setResource(mOffset, buffer.view);
 }
+
+void ShaderVar::setImpl(gfx::ISamplerState* sampler) const {
+    mpShader->setSampler(mOffset, sampler);
+}
+
 } // namespace Voluma

@@ -37,6 +37,8 @@ class VL_API ShaderVar {
     void setImpl(const Texture& texture) const;
 
     void setImpl(const Buffer& buffer) const;
+    
+    void setImpl(gfx::ISamplerState* sampler) const;
 
     template <typename T>
     void setImpl(const T& val) const;

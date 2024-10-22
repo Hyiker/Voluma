@@ -1,0 +1,23 @@
+#pragma once
+#include "Utils/HostDevice.slangh"
+#if HOST_CODE
+#include "Core/Enum.h"
+#endif
+
+BEGIN_NAMESPACE_VL
+
+enum ShadingMode : int { Normal = 0, FlatShade = 1, TransportFunc = 2 };
+
+VL_ENUM_INFO(
+    ShadingMode,
+    { { ShadingMode::Normal, "Normal" }, { ShadingMode::FlatShade, "FlatShade" }, { ShadingMode::TransportFunc, "TransportFunc" } }
+)
+VL_ENUM_REGISTER(ShadingMode);
+
+struct SampleAppParam {
+    int filterValue = 500;
+    ShadingMode shadingMode = ShadingMode::Normal;
+};
+
+END_NAMESPACE_VL
+

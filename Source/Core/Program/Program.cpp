@@ -52,14 +52,14 @@ Slang::ComPtr<gfx::IShaderProgram> ProgramManager::createProgram(
 
     slang::TargetDesc targetDesc;
     targetDesc.format = getSlangCompileTarget();
-    targetDesc.profile = mpDevice->slangGlobalSession->findProfile("sm_6_5");
+    targetDesc.profile = mpDevice->getGlobalSession()->findProfile("sm_6_5");
     targetDesc.forceGLSLScalarBufferLayout = true;
     sessionDesc.targetCount = 1;
     sessionDesc.targets = &targetDesc;
     targetDesc.flags |= SLANG_TARGET_FLAG_GENERATE_SPIRV_DIRECTLY;
 
     Slang::ComPtr<slang::ISession> pSlangSession;
-    mpDevice->slangGlobalSession->createSession(sessionDesc,
+    mpDevice->getGlobalSession()->createSession(sessionDesc,
                                                 pSlangSession.writeRef());
 
     Slang::ComPtr<slang::IBlob> diagnosticsBlob;
@@ -82,11 +82,12 @@ Slang::ComPtr<gfx::IShaderProgram> ProgramManager::createProgram(
     pSlangSession->createCompositeComponentType(
         componentTypes.data(), componentTypes.size(), linkedProgram.writeRef(),
         diagnosticsBlob.writeRef());
+    VL_ASSERT(linkedProgram != nullptr);
     diagnoseIfNeeded(diagnosticsBlob);
 
     gfx::IShaderProgram::Desc programDesc = {};
     programDesc.slangGlobalScope = linkedProgram;
 
-    return mpDevice->gfxDevice->createProgram(programDesc);
+    return mpDevice->getGfxDevice()->createProgram(programDesc);
 }
 } // namespace Voluma

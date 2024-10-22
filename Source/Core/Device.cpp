@@ -2,6 +2,7 @@
 
 #include <slang-gfx.h>
 
+#include "Texture.h"
 #include "Utils/Logger.h"
 
 namespace Voluma {
@@ -23,20 +24,38 @@ class GFXDebugCallBack : public gfx::IDebugCallback {
 
 GFXDebugCallBack gGFXDebugCallBack;
 
+gfx::DeviceType getPlatformDevice() {
+#if VL_WINDOWS
+    return gfx::DeviceType::DirectX12;
+#elif VL_MACOSX
+    return gfx::DeviceType::Metal;
+#else
+    return gfx::DeviceType::Vulkan;
+#endif
+}
+
 Device::Device() {
-    slang::createGlobalSession(slangGlobalSession.writeRef());
 
-    gfx::IDevice::Desc deviceDesc = {};
-    // deviceDesc.deviceType = gfx::DeviceType::DirectX12;
-    deviceDesc.slang.slangGlobalSession = slangGlobalSession;
-
+    gfxEnableDebugLayer();
     if (SLANG_FAILED(gfxSetDebugCallback(&gGFXDebugCallBack))) {
         logFatal("gfxSetDebugCallback failed");
     }
-    gfxEnableDebugLayer();
 
-    if (SLANG_FAILED(gfxCreateDevice(&deviceDesc, gfxDevice.writeRef()))) {
+    slang::createGlobalSession(mSlangGlobalSession.writeRef());
+    
+    gfx::IDevice::Desc deviceDesc = {};
+    deviceDesc.deviceType = getPlatformDevice();
+    deviceDesc.slang.slangGlobalSession = mSlangGlobalSession;
+
+    if (SLANG_FAILED(gfxCreateDevice(&deviceDesc, mGfxDevice.writeRef()))) {
         logFatal("Failed to create GPU device");
     }
+}
+
+std::shared_ptr<Texture> Device::createTexture(
+    gfx::ITextureResource::Desc textureDesc, gfx::IResourceView::Desc viewDesc,
+    const gfx::ITextureResource::SubresourceData* pInitData) {
+    return std::make_shared<Texture>(this->shared_from_this(), textureDesc,
+                                     viewDesc, pInitData);
 }
 } // namespace Voluma

@@ -1,6 +1,8 @@
 #include "SampleApp.h"
 
 #include <fmt/format.h>
+#include <imgui.h>
+#include <imgui_internal.h>
 #include <slang-com-ptr.h>
 #include <slang-gfx.h>
 #include <slang.h>
@@ -11,9 +13,12 @@
 #include "Core/Math.h"
 #include "Core/Program/Program.h"
 #include "Core/Program/ShaderVar.h"
+#include "Core/SampleAppShared.slangh"
+#include "Core/Texture.h"
 #include "Core/Window.h"
 #include "Data/VolData.h"
 #include "Error.h"
+#include "Utils/Gui.h"
 #include "Utils/Logger.h"
 #include "Utils/UiInputs.h"
 
@@ -37,7 +42,7 @@ SampleApp::SampleApp() {
 
     mpProgramManager = std::make_shared<ProgramManager>(mpDevice);
 
-    auto gfxDevice = mpDevice->gfxDevice;
+    auto gfxDevice = mpDevice->getGfxDevice();
 
     // Create command queue
     ICommandQueue::Desc queueDesc;
@@ -158,8 +163,11 @@ SampleApp::SampleApp() {
         mComputePipelineState = gfxDevice->createComputePipelineState(desc);
         VL_ASSERT(mComputePipelineState != nullptr);
 
-        createComputeTexture();
+        createPresentTexture();
     }
+
+    mpGui = std::make_shared<Gui>(mpWindow.get(), mpDevice, mpProgramManager,
+                                  mQueue, mFramebufferLayout);
 }
 
 SampleApp::SampleApp(SampleApp&& other) noexcept
@@ -174,7 +182,7 @@ void SampleApp::createFramebuffers() {
 
     auto colorFormat = mSwapchain->getDesc().format;
 
-    auto gfxDevice = mpDevice->gfxDevice;
+    auto gfxDevice = mpDevice->getGfxDevice();
     for (uint32_t i = 0; i < kSwapChainImageCount; i++) {
         // Depth texture
         gfx::ITextureResource::Desc depthBufferDesc;
@@ -225,11 +233,10 @@ void SampleApp::createFramebuffers() {
     }
 }
 
-void SampleApp::createComputeTexture() {
-    auto gfxDevice = mpDevice->gfxDevice;
-
+void SampleApp::createPresentTexture() {
     int width = mSwapchain->getDesc().width;
     int height = mSwapchain->getDesc().height;
+
     ITextureResource::Desc resultTextureDesc = {};
     resultTextureDesc.type = IResource::Type::Texture2D;
     resultTextureDesc.numMipLevels = 1;
@@ -238,32 +245,36 @@ void SampleApp::createComputeTexture() {
     resultTextureDesc.size.depth = 1;
     resultTextureDesc.defaultState = ResourceState::UnorderedAccess;
     resultTextureDesc.format = Format::R32G32B32A32_FLOAT;
-    auto resource = gfxDevice->createTextureResource(resultTextureDesc);
+
     IResourceView::Desc resultUAVDesc = {};
     resultUAVDesc.format = resultTextureDesc.format;
     resultUAVDesc.type = IResourceView::Type::UnorderedAccess;
-    auto textureUAV = gfxDevice->createTextureView(resource, resultUAVDesc);
 
-    mComputeTexture.resource = resource;
-    mComputeTexture.view = textureUAV;
+    mpPresentTexture =
+        mpDevice->createTexture(resultTextureDesc, resultUAVDesc);
 }
 
-void SampleApp::createComputeBuffer() {
-    gfx::IBufferResource::Desc bufferDesc = {};
-    bufferDesc.allowedStates.add(ResourceState::ShaderResource);
-    bufferDesc.allowedStates.add(ResourceState::UnorderedAccess);
-    bufferDesc.allowedStates.add(ResourceState::CopyDestination);
-    bufferDesc.allowedStates.add(ResourceState::General);
-    bufferDesc.sizeInBytes = mpVolData->getSliceCount() *
-                             mpVolData->getColWidth() *
-                             mpVolData->getRowWidth() * sizeof(float);
-    bufferDesc.type = IResource::Type::Buffer;
-    mVolBuffer.resource = mpDevice->gfxDevice->createBufferResource(bufferDesc);
+void SampleApp::createVolDataTexture() {
+    auto gfxDevice = mpDevice->getGfxDevice();
 
-    IResourceView::Desc desc = {};
-    desc.type = IResourceView::Type::UnorderedAccess;
-    mVolBuffer.view = mpDevice->gfxDevice->createBufferView(mVolBuffer.resource,
-                                                            nullptr, desc);
+    int width = mpVolData->getColWidth();
+    int height = mpVolData->getRowWidth();
+    int depth = mpVolData->getSliceCount();
+
+    ITextureResource::Desc volTextureDesc = {};
+    volTextureDesc.type = IResource::Type::Texture3D;
+    volTextureDesc.numMipLevels = 1;
+    volTextureDesc.size.width = width;
+    volTextureDesc.size.height = height;
+    volTextureDesc.size.depth = depth;
+    volTextureDesc.defaultState = ResourceState::UnorderedAccess;
+    volTextureDesc.format = Format::R32_FLOAT;
+
+    IResourceView::Desc volUAVDesc = {};
+    volUAVDesc.format = volTextureDesc.format;
+    volUAVDesc.type = IResourceView::Type::UnorderedAccess;
+
+    mpVolDataTexture = mpDevice->createTexture(volTextureDesc, volUAVDesc);
 }
 
 void SampleApp::handleRenderFrame() {
@@ -271,10 +282,20 @@ void SampleApp::handleRenderFrame() {
 
     mTransientHeaps[framebufferIndex]->synchronizeAndReset();
     executeRenderFrame(framebufferIndex);
+
+    renderUI();
+
+    mpGui->endFrame(mTransientHeaps[framebufferIndex],
+                    mFramebuffers[framebufferIndex]);
+
+    mSwapchain->present();
+
     mTransientHeaps[framebufferIndex]->finish();
 }
 void SampleApp::handleMouseEvent(const MouseEvent& mouseEvent) {
-    mCamera.onMouseEvent(mouseEvent);
+    if (!mpGui->onMouseEvent(mouseEvent)) {
+        mCamera.onMouseEvent(mouseEvent);
+    }
 }
 
 void SampleApp::handleKeyboardEvent(const KeyboardEvent& keyEvent) {
@@ -297,58 +318,103 @@ void SampleApp::loadFromDisk(const std::string& filename) {
     logInfo("patient info: {}", mpVolData->getPatientData());
     logInfo("scan meta: {}", mpVolData->getScanMetaData());
 
-    createComputeBuffer();
+    createVolDataTexture();
 }
 
 void SampleApp::beginLoop() { mpWindow->msgLoop(); }
 
+void SampleApp::renderUI() {
+    mpGui->beginFrame();
+    ImGui::Begin("Dashboard");
+
+    ImGui::SliderInt("Volume filter", &mParams.filterValue, 0, 2000);
+
+    static const char* kShadingItems[] = {
+        Voluma::enumToString(ShadingMode::Normal).c_str(),
+        Voluma::enumToString(ShadingMode::FlatShade).c_str(),
+        Voluma::enumToString(ShadingMode::TransportFunc).c_str(),
+    };
+    ImGui::Combo("Shading mode", (int*)&mParams.shadingMode, kShadingItems,
+                 IM_ARRAYSIZE(kShadingItems));
+
+    ImGui::End();
+}
+
 void SampleApp::executeRenderFrame(int framebufferIndex) {
-    auto gfxDevice = mpDevice->gfxDevice;
+    auto gfxDevice = mpDevice->getGfxDevice();
 
     int width = mSwapchain->getDesc().width;
     int height = mSwapchain->getDesc().height;
-    static bool isBufferCopied = false;
-    if (!isBufferCopied) {
+    static bool isDataCopied = false;
+    if (!isDataCopied) {
+        gfx::ITextureResource::Offset3D gfxOffset = {
+            static_cast<gfx::GfxIndex>(0), static_cast<gfx::GfxIndex>(0),
+            static_cast<gfx::GfxIndex>(0)};
+
+        gfx::ITextureResource::Extents gfxSize = {
+            static_cast<gfx::GfxCount>(mpVolData->getColWidth()),
+            static_cast<gfx::GfxCount>(mpVolData->getRowWidth()),
+            static_cast<gfx::GfxCount>(mpVolData->getSliceCount())};
+
+        gfx::FormatInfo formatInfo = {};
+        gfx::gfxGetFormatInfo(mpVolDataTexture->getFormat(), &formatInfo);
+
+        SubresourceRange range = {};
+        range.mipLevel = 0;
+        range.mipLevelCount = 1;
+        range.baseArrayLayer = 0;
+        range.layerCount = 1;
+
+        gfx::ITextureResource::SubresourceData data = {};
+        data.data = mpVolData->getBufferData().data();
+        data.strideY = static_cast<int64_t>(gfxSize.width) /
+                       formatInfo.blockWidth * formatInfo.blockSizeInBytes;
+        data.strideZ = data.strideY * (gfxSize.height / formatInfo.blockHeight);
+
         ComPtr<ICommandBuffer> resourceCommandBuffer =
             mTransientHeaps[framebufferIndex]->createCommandBuffer();
         auto resourceEncoder = resourceCommandBuffer->encodeResourceCommands();
 
-        resourceEncoder->bufferBarrier(mVolBuffer.resource,
-                                       ResourceState::Undefined,
-                                       ResourceState::CopyDestination);
-        resourceEncoder->uploadBufferData(
-            mVolBuffer.resource, 0, mpVolData->getBufferData().size(),
-            (void*)mpVolData->getBufferData().data());
+        resourceEncoder->textureBarrier(mpVolDataTexture->getResource().get(),
+                                        ResourceState::Undefined,
+                                        ResourceState::CopyDestination);
+        resourceEncoder->uploadTextureData(
+            mpVolDataTexture->getResource().get(), range, gfxOffset, gfxSize,
+            &data, 1);
+
+        resourceEncoder->textureBarrier(mpVolDataTexture->getResource().get(),
+                                        ResourceState::CopyDestination,
+                                        ResourceState::UnorderedAccess);
         resourceEncoder->endEncoding();
         resourceCommandBuffer->close();
         mQueue->executeCommandBuffer(resourceCommandBuffer);
-        isBufferCopied = true;
+
+        isDataCopied = true;
     }
 
     {
         ComPtr<ICommandBuffer> computeCommandBuffer =
             mTransientHeaps[framebufferIndex]->createCommandBuffer();
-        auto renderEncoder = computeCommandBuffer->encodeComputeCommands();
+        auto computeEncoder = computeCommandBuffer->encodeComputeCommands();
 
-        auto rootObject = renderEncoder->bindPipeline(mComputePipelineState);
-
-        renderEncoder->bufferBarrier(mVolBuffer.resource,
-                                     ResourceState::CopyDestination,
-                                     ResourceState::UnorderedAccess);
+        auto rootObject = computeEncoder->bindPipeline(mComputePipelineState);
 
         auto deviceInfo = gfxDevice->getDeviceInfo();
 
         ShaderVar rootVar(rootObject);
         mCamera.bindShaderData(rootVar);
         rootVar["frameDim"] = uint2(width, height);
-        rootVar["dstTex"] = mComputeTexture;
-        rootVar["volBuffer"] = mVolBuffer;
+        rootVar["dstTex"] = *mpPresentTexture;
+        rootVar["volData"]["volTex"] = *mpVolDataTexture;
+        rootVar["volData"]["volDim"] =
+            uint3(mpVolData->getColWidth(), mpVolData->getRowWidth(),
+                  mpVolData->getSliceCount());
+        rootVar["params"].setBlob(mParams);
 
-        if (SLANG_FAILED(
-                renderEncoder->dispatchCompute(width / 16, height / 16, 1))) {
-            logError("dispatchCompute failed");
+        if (SLANG_FAILED(computeEncoder->dispatchCompute(width, height, 1))) {
+            logFatal("dispatchCompute failed");
         }
-        renderEncoder->endEncoding();
+        computeEncoder->endEncoding();
         computeCommandBuffer->close();
         mQueue->executeCommandBuffer(computeCommandBuffer);
     }
@@ -367,10 +433,8 @@ void SampleApp::executeRenderFrame(int framebufferIndex) {
 
         auto rootObject = renderEncoder->bindPipeline(mPresentPipelineState);
 
-        auto deviceInfo = gfxDevice->getDeviceInfo();
-
         ShaderVar rootVar(rootObject);
-        rootVar["srcTex"] = mComputeTexture;
+        rootVar["srcTex"] = *mpPresentTexture;
 
         // We also need to set up a few pieces of fixed-function pipeline
         // state that are not bound by the pipeline state above.
@@ -385,8 +449,6 @@ void SampleApp::executeRenderFrame(int framebufferIndex) {
         presentCommandBuffer->close();
         mQueue->executeCommandBuffer(presentCommandBuffer);
     }
-
-    mSwapchain->present();
 }
 SampleApp::~SampleApp() = default;
 
