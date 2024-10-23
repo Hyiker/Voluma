@@ -53,6 +53,7 @@ Slang::ComPtr<gfx::IShaderProgram> ProgramManager::createProgram(
     slang::TargetDesc targetDesc;
     targetDesc.format = getSlangCompileTarget();
     targetDesc.profile = mpDevice->getGlobalSession()->findProfile("sm_6_5");
+    logInfo("Profile id: {}", int(targetDesc.profile));
     targetDesc.forceGLSLScalarBufferLayout = true;
     sessionDesc.targetCount = 1;
     sessionDesc.targets = &targetDesc;

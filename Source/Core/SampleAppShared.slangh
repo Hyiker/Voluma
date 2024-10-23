@@ -16,7 +16,7 @@ VL_ENUM_REGISTER(ShadingMode);
 
 struct SampleAppParam {
     int filterValue = 500;
-    ShadingMode shadingMode = ShadingMode::FlatShade;
+    ShadingMode shadingMode = ShadingMode::TransportFunc;
 };
 
 END_NAMESPACE_VL

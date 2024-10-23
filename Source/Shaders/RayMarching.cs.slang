@@ -97,12 +97,36 @@ struct VolData {
             return false;
         return true;
     }
+
+    bool rayBoxIntersection(float3 rayOrigin, float3 rayDir, out float2 t) {
+        float3 boxSize = getNormalizedVolBounds();
+        float3 boxMin = -boxSize * 0.5f;
+        float3 boxMax = boxSize * 0.5f;
+
+        float3 invDir = 1.0f / rayDir;
+        float3 tMin = (boxMin - rayOrigin) * invDir;
+        float3 tMax = (boxMax - rayOrigin) * invDir;
+
+        float3 t0 = min(tMin, tMax);
+        float3 t1 = max(tMin, tMax);
+
+        float tNear = max(max(t0.x, t0.y), t0.z);
+        float tFar = min(min(t1.x, t1.y), t1.z);
+        if (tNear > tFar || tFar < 0.0f) {
+            return false;
+        }
+
+        // 返回最近和最远交点的参数t
+        t = float2(tNear, tFar);
+        return true;
+    }
 };
 
 struct ShadingData {
     float3 posW;
     float density;
     float3 normW;
+    float4 transportColor;
 };
 
 struct Ray {
@@ -139,57 +163,84 @@ bool rayMarchStep(float3 posW, out float value, out float3 texLoc) {
     return true;
 }
 
-bool transportFunc(float value, out float3 color) {
-    if (value < params.filterValue)
-        return false;
+struct TransportStep {
+    float4 color;
+    int valueThreshold;
+};
 
-    color = float3(value / 500.0);
-    return true;
-}
-
-bool rayMarch(const Ray ray, out ShadingData sd) {
-    const int kMaxSteps = 2000;
-    const float kInitialStep = 1.5f / kMaxSteps;
-    const float kBigStep = 0.5f;
-    float stepSize = kInitialStep;
-
-    float3 p = ray.origin + ray.dir * 1.f;
-    float3 accumulateColor = float3(0.0);
-    float3 stepColor = float3(0.0);
-    float3 texLoc;
-    float stepValue;
-
-    for (int i = 0; i < kMaxSteps; i++) {
-        float gradientNorm = length(volData.computeGradient(texLoc));
-        if (rayMarchStep(p, stepValue, texLoc)) {
-            // bisec ray marching
-            if (transportFunc(stepValue, stepColor)) {
-                accumulateColor = stepColor;
-                sd.density = stepValue;
-                sd.posW = p;
-                sd.normW = volData.computeNormal(texLoc);
-                return true;
-            }
-        }
-        p += stepSize * ray.dir;
+float4 transportFunc(float value, inout int nextTFIndex) {
+    const int kBreakpointCount = 3;
+    const TransportStep kTransportSteps[kBreakpointCount] = {
+        { float4(0.1, 0.1, 0.7, 0.2), 500 }, { float4(0.2, 0.2, 0.4, 0.3), 1000 }, { float4(1.0, 1.0, 1.0, 0.5), 1800 }
+    };
+    if (nextTFIndex >= kBreakpointCount) {
+        return 0.f;
     }
-    return false;
+    TransportStep nextStep = kTransportSteps[nextTFIndex];
+    if (value >= nextStep.valueThreshold) {
+        nextTFIndex++;
+        return nextStep.color;
+    }
+    return 0.f;
 }
 
-float3 phongShading(const ShadingData sd) {
+float3 phongShading(const ShadingData sd, const float3 diffuseColor = 0.4f) {
     float3 toLight = float3(0.0, 0.0, -3.0) - cameraData.target;
     float3 L = normalize(toLight);
 
-    float3 ambient = 0.6f;
-    float3 diffuse = 0.4f * 1.f * max(0, dot(sd.normW, L));
+    float3 ambient = 0.2f;
+    float3 diffuse = diffuseColor * 1.f * max(0, dot(sd.normW, L));
     // Remove specular here to make it look smoother
     // float3 specular = 0.5f * 1.f * pow(max(0, dot(reflect(-L, sd.normW), L)), 5.f);
 
     return ambient + diffuse;
 }
 
+bool rayMarch(const Ray ray, out ShadingData sd) {
+    const int kMaxSteps = 1000;
+    const float kInitialStep = 1.0f / kMaxSteps;
+    float stepSize = kInitialStep;
+
+    float3 stepColor = float3(0.0);
+    float3 texLoc;
+    float stepValue;
+
+    float2 t;
+    if (!volData.rayBoxIntersection(ray.origin, ray.dir, t)) {
+        return false;
+    }
+    float3 p = ray.origin + ray.dir * t.x;
+
+    int nextTFIndex = 0;
+    sd.transportColor = 0.f;
+
+    for (int i = 0; i < kMaxSteps; i++) {
+        if (rayMarchStep(p, stepValue, texLoc) && stepValue >= params.filterValue) {
+            sd.density = stepValue;
+            sd.posW = p;
+            sd.normW = volData.computeNormal(texLoc);
+            if (params.shadingMode == ShadingMode::TransportFunc) {
+                float4 c = transportFunc(stepValue, nextTFIndex);
+                ;
+                sd.transportColor += float4(c.xyz * c.a, c.a);
+                if (nextTFIndex == 3) {
+                    return true;
+                }
+            } else {
+                return true;
+            }
+        }
+        p += stepSize * ray.dir;
+    }
+    if (params.shadingMode != ShadingMode::TransportFunc)
+        return false;
+    return sd.transportColor.a != 0.f;
+}
+
 void execute(uint2 pixel) {
+    const float3 kBackgroundColor = float3(0.03, 0.3, 0.3);
     Ray ray;
+    float2 uv = float2(pixel) / frameDim.xy;
     computeCameraRayOrtho(pixel + 0.5, frameDim, ray);
 
     ShadingData sd;
@@ -203,13 +254,12 @@ void execute(uint2 pixel) {
             shadingColor = sd.normW * 0.5 + 0.5;
             break;
         case ShadingMode::TransportFunc:
-            // TODO
-            shadingColor = 1.f;
+            shadingColor = sd.transportColor.rgb + (1.f - sd.transportColor.a) * kBackgroundColor;
             break;
         }
         dstTex[pixel] = float4(shadingColor, 1.0f);
     } else {
-        dstTex[pixel] = float4(0.3);
+        dstTex[pixel] = float4(kBackgroundColor, 1.f);
     }
 }
 
