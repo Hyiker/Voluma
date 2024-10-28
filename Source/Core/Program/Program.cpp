@@ -28,9 +28,19 @@ SlangCompileTarget getSlangCompileTarget() {
 #if VL_WINDOWS
     return SlangCompileTarget::SLANG_DXIL;
 #elif VL_MACOSX
-    return SlangCompileTarget::SLANG_METAL;
+    return SlangCompileTarget::SLANG_METAL_LIB;
 #else
     return SlangCompileTarget::SLANG_SPIRV;
+#endif
+}
+
+const char* getSlangProfileString() {
+#if VL_WINDOWS
+    return "sm_6_5";
+#elif VL_MACOSX
+    return "spirv_1_5";
+#else
+    return "spirv_1_5";
 #endif
 }
 
@@ -52,8 +62,8 @@ Slang::ComPtr<gfx::IShaderProgram> ProgramManager::createProgram(
 
     slang::TargetDesc targetDesc;
     targetDesc.format = getSlangCompileTarget();
-    targetDesc.profile = mpDevice->getGlobalSession()->findProfile("sm_6_5");
-    logInfo("Profile id: {}", int(targetDesc.profile));
+    targetDesc.profile =
+        mpDevice->getGlobalSession()->findProfile(getSlangProfileString());
     targetDesc.forceGLSLScalarBufferLayout = true;
     sessionDesc.targetCount = 1;
     sessionDesc.targets = &targetDesc;

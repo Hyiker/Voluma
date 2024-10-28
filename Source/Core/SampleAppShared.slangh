@@ -1,6 +1,6 @@
 #pragma once
 #include "Utils/HostDevice.slangh"
-#if HOST_CODE
+#ifdef HOST_CODE
 #include "Core/Enum.h"
 #endif
 

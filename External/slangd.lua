@@ -16,6 +16,12 @@ package("slangd")
         end
     end
 
+    on_load("macosx", "linux|i386", "linux|x86_64", function (package)
+        package:add("ldflags", "-Wl,-rpath," .. package:installdir("lib"))
+        package:add("links", "slang", "gfx")
+    end)
+
+
     on_install("windows|x64", "macosx|arm64", function (package)
         os.cp("include", package:installdir())
         if package:is_plat("windows") then
@@ -25,7 +31,7 @@ package("slangd")
             -- os.trycp(path.join("bin", "*.dll"), package:installdir("bin"))
             os.trycp(path.join("lib", "*.a"), package:installdir("lib"))
             os.trycp(path.join("lib", "*.dylib"), package:installdir("lib"))
-            package:add("links", "slang")
+            package:add("links", "slang", "gfx")
         end
         package:addenv("PATH", "bin")
     end)

@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <iterator>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -79,9 +80,11 @@ std::shared_ptr<VolData> VolData::loadFromDisk(
     };
 
     loadDcmData(filePaths[0], true);
-    std::for_each(std::execution::par_unseq, filePaths.begin() + 1,
-                  filePaths.end(), loadDcmData);
-
+#if VL_MACOSX
+    std::for_each(filePaths.begin() + 1, filePaths.end(), loadDcmData);
+#else
+    std::for_each(std::execution::par_unseq, filePaths.begin() + 1, filePaths.end(), loadDcmData);
+#endif
     pVolData->finalize();
 
     return pVolData;

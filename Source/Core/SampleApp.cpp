@@ -75,7 +75,7 @@ SampleApp::SampleApp() {
 #if VL_WINDOWS
         gfx::WindowHandle::FromHwnd(mpWindow->getNativeHandle())
 #elif VL_MACOSX
-        gfx::WindowHandle::FromNSwnd(mpWindow->getNativeHandle())
+        gfx::WindowHandle::FromNSWindow(mpWindow->getNativeHandle())
 #endif
     );
     VL_ASSERT(mSwapchain != nullptr);
@@ -143,7 +143,7 @@ SampleApp::SampleApp() {
                 "Shaders/Present.raster.slang",
                 {{"vertexMain", ShaderType::Vertex},
                  {"fragmentMain", ShaderType::Pixel}});
-
+        VL_ASSERT(graphicsProgram != nullptr);
         GraphicsPipelineStateDesc desc;
         desc.inputLayout = inputLayout;
         desc.program = graphicsProgram;
@@ -157,7 +157,7 @@ SampleApp::SampleApp() {
         Slang::ComPtr<gfx::IShaderProgram> computeProgram =
             mpProgramManager->createProgram("Shaders/RayMarching.cs.slang",
                                             {{"main", ShaderType::Compute}});
-
+        VL_ASSERT(computeProgram != nullptr);
         ComputePipelineStateDesc desc;
         desc.program = computeProgram;
         mComputePipelineState = gfxDevice->createComputePipelineState(desc);

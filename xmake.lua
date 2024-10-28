@@ -14,7 +14,7 @@ target(name)
         set_toolchains("clang-cl")
         add_defines("NOMINMAX", "WIN32_LEAN_AND_MEAN", "_CRT_SECURE_NO_WARNINGS")
     elseif is_plat("macosx") then 
-        add_links("slang", "gfx") -- TODO: find a btter way
+        -- add_links("slang", "gfx", "platform") -- TODO: find a btter way
     end
 end
 
